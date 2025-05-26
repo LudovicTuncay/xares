@@ -14,6 +14,7 @@ import math
 
 import torch
 import torch.nn.functional as F
+from huggingface_hub import hf_hub_download
 
 # Local import (relative to example/jepa/)
 from .components.vision_transformer import VisionTransformer
@@ -48,7 +49,7 @@ class JEPAEncoder(torch.nn.Module):
 
     def __init__(
         self,
-        checkpoint: Optional[str] = r"example/jepa/checkpoints/JEPA.ckpt",
+        checkpoint: Optional[str] = None, # r"example/jepa/checkpoints/JEPA.ckpt",
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
     ) -> None:
         super().__init__()
@@ -92,27 +93,41 @@ class JEPAEncoder(torch.nn.Module):
         self.output_dim: int = 768
 
         # -------- load checkpoint (weights_only=True) --------------------- #
+
+        state = None
+
         if checkpoint is not None:
             ckpt_path = Path(checkpoint).expanduser()
             if not ckpt_path.is_file():
                 raise FileNotFoundError(ckpt_path)
 
             state = torch.load(ckpt_path, map_location=self.device)
-            if "state_dict" in state:  # lightning checkpoints
-                state = state["state_dict"]
+        else:
+            local_ckpt = hf_hub_download(
+                        repo_id="ltuncay/Audio-JEPA",         # e.g. "your-username/your-repo"
+                        filename="JEPA.ckpt",                 # e.g. "model.ckpt"
+                        use_auth_token=None                   # only if your repo is private
+                    )
+            state = torch.load(local_ckpt, map_location=self.device)
 
-            # JEPA checkpoints prefix the online/target encoders
-            prefix = "target_encoder."
-            if not any(k.startswith(prefix) for k in state.keys()):
-                prefix = "encoder."
+        if "state_dict" in state:  # lightning checkpoints
+            state = state["state_dict"]
 
-            state = {
-                k[len(prefix):]: v for k, v in state.items() if k.startswith(prefix)
-            }
-            missing, unexpected = self.encoder.load_state_dict(state, strict=False)
-            if unexpected:
-                raise RuntimeError(
-                    f"Unexpected keys when loading checkpoint: {unexpected}")
+        if state is None:
+            raise ValueError("Invalid checkpoint")
+
+        # JEPA checkpoints prefix the online/target encoders
+        prefix = "target_encoder."
+        if not any(k.startswith(prefix) for k in state.keys()):
+            prefix = "encoder."
+
+        state = {
+            k[len(prefix):]: v for k, v in state.items() if k.startswith(prefix)
+        }
+        missing, unexpected = self.encoder.load_state_dict(state, strict=False)
+        if unexpected:
+            raise RuntimeError(
+                f"Unexpected keys when loading checkpoint: {unexpected}")
 
         # put entire module in eval
         self.eval()
@@ -207,129 +222,3 @@ class JEPAEncoder(torch.nn.Module):
             output[b, : emb.shape[0]] = emb
 
         return output
-
-
-
-
-# # ------------------------------------------------------------------------- #
-# class JEPAEncoder(torch.nn.Module):
-#     sampling_rate: int = 32_000                                             # required by xares
-#     hop_size_in_ms: int = 10                                                # required by xares
-#     output_dim: int = 768                                                   # set after model is built
-#     clip_length: int = 10                                                   # seconds
-#     custom_max_audio_length: int = int(sampling_rate * clip_length)         # 320000 samples
-
-#     def __init__(self, checkpoint: Optional[str] = None, device: str | torch.device = "cpu"):
-#         super().__init__()
-#         self.device = torch.device(device)
-
-#         self.mel = MelSpecTransform(
-#             sr=self.sampling_rate,
-#             n_mels=128,
-#             clip_length=10,
-#             target_time_bins=256,
-#             log=True,
-#         ).to(self.device)
-
-#         self.encoder = VisionTransformer(
-#             patch_size=(16, 16),
-#             in_chans=1,
-#             embed_dim=768,
-#             depth=12,
-#             num_heads=12,
-#             mlp_ratio=4.0,
-#         ).to(self.device)
-
-#         self.output_dim = self.encoder.embed_dim
-
-#         # -------- load checkpoint (weights_only=True) --------------------- #
-#         if checkpoint is not None:
-#             device = "cuda" if torch.cuda.is_available() else "cpu"
-#             ckpt_path = Path(checkpoint).expanduser()
-#             state = torch.load(ckpt_path, map_location=device, weights_only=True)
-
-#             if "state_dict" in state:
-#                 state = state["state_dict"]
-
-#             prefix = "target_encoder."
-#             if not any(k.startswith(prefix) for k in state):
-#                 prefix = "encoder."                         # <- graceful fallback
-
-
-#             state = {k[len(prefix):]: v for k, v in state.items() if k.startswith(prefix)}
-
-#             missing, unexpected = self.encoder.load_state_dict(state, strict=False)
-#             if unexpected:
-#                 raise RuntimeError(f"Unexpected keys when loading checkpoint: {unexpected}")
-
-#         self.encoder.eval()
-
-#     # # ---------------------------------------------------------------------- #
-#     # @torch.inference_mode()
-#     # def forward(self, audio: torch.Tensor) -> torch.Tensor:                  # noqa: D401
-#     #     """
-#     #     Parameters
-#     #     ----------
-#     #     audio : `torch.Tensor`
-#     #         `[T]` or `[B,T]` float waveform (32 kHz).
-
-#     #     Returns
-#     #     -------
-#     #     embeddings : `torch.Tensor`
-#     #         `[B, N, D]` patch-level embeddings.
-#     #     """
-#     #     if audio.ndim == 1:
-#     #         audio = audio.unsqueeze(0)                                      # [B=1,T]
-#     #     audio = audio.to(self.device)
-
-#     #     audio = normalize_audio(audio)
-
-#     #     # Process each audio sample independently
-#     #     print(f"Audio shape before encoder: {audio.shape}")
-
-#     #     # If audio is longer than 10 seconds, process it in chunks of 10 seconds
-#     #     if audio.size(1) > self.custom_max_audio_length:
-#     #         embeds = []
-#     #         for chunk in audio.split(self.custom_max_audio_length, dim=-1):
-#     #             # Process each chunk separately
-#     #             chunk_embed = self._forward_10s_or_less(chunk)
-#     #             embeds.append(chunk_embed)
-#     #         embeddings = torch.cat(embeds, dim=1)
-#     #     else:
-#     #         embeddings = self._forward_10s_or_less(audio)
-
-#     #     print(f"Embeddings shape after encoder: {embeddings.shape}")
-#     #     return embeddings
-
-#     # def _forward_10s_or_less(self, audio_batch: torch.Tensor) -> torch.Tensor:
-
-#     #     audio_batch = pad(audio_batch, clip_len_sec=self.clip_length, sr=self.sampling_rate)    # pad to 10s
-
-#     #     # log mel spectrogram  → [B, 1, n_mels, n_frames]
-#     #     # mel only processes 1D tensors, so we need to compute the mel spectrogram independently for each element of the batch
-#     #     specs = []
-#     #     for i, wav in enumerate(audio_batch):
-#     #         specs.append(self._apply_transforms(wav))
-
-#     #     batch = torch.stack(specs)
-
-#     #     embeddings = self.encoder(batch)
-#     #     return embeddings
-
-#     # def _apply_transforms(self, waveform: torch.Tensor) -> torch.Tensor:
-#     #     """Apply transformation pipeline to a 1D waveform tensor."""
-
-#     #     if waveform.ndim != 1 and waveform.ndim != 2:
-#     #         raise ValueError(f"Expected 1D or 2D tensor, got {waveform.ndim}D tensor")
-#     #     if waveform.ndim == 2:
-#     #         waveform = waveform.mean(dim=0) # Down-mix stereo to mono
-
-#     #     # Add channel dimension for fbank compatibility
-#     #     wav = waveform.clone().unsqueeze(0)
-
-#     #     # wav = wav.to(self.device)
-#     #     spec = self.mel(wav)  # [1,128,256]
-
-#     #     print(f"Spec shape after mel transform: {spec.shape}")
-
-#     #     return spec

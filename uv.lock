@@ -1200,6 +1200,7 @@ name = "xares"
 version = "0.1.2"
 source = { editable = "." }
 dependencies = [
+    { name = "huggingface-hub" },
     { name = "jiwer" },
     { name = "loguru" },
     { name = "numpy" },
@@ -1224,6 +1225,7 @@ examples = [
 [package.metadata]
 requires-dist = [
     { name = "dasheng", marker = "extra == 'examples'" },
+    { name = "huggingface-hub", specifier = ">=0.31.4" },
     { name = "jiwer" },
     { name = "loguru" },
     { name = "numpy", specifier = "<2" },
