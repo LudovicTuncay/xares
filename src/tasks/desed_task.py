@@ -36,6 +36,7 @@ def desed_config(encoder) -> TaskConfig:
         return target
 
     return TaskConfig(
+        domain="Environment",
         criterion="BCEWithLogitsLoss",
         do_knn=False,
         encoder=encoder,

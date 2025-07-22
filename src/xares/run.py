@@ -28,7 +28,7 @@ def worker(
     config = attr_from_py_path(task_py, endswith="_config")(encoder)
     if config.disabled:
         logger.warning(f"Task {config.name} is disabled, skipping")
-        return config.formal_name, (0, 0), (0, 0), config.private
+        return config.formal_name, (0, 0), (0, 0), config.private, config.domain
     task = XaresTask(config=config)
 
     # Run the task
@@ -59,7 +59,7 @@ def worker(
         logger.info(f"KNN score of {config.name}: {knn_score}")
 
     torch.cuda.empty_cache()
-    return task.config.formal_name, mlp_score, knn_score, task.config.private
+    return task.config.formal_name, mlp_score, knn_score, task.config.private, task.config.domain
 
 
 def stage_1(encoder_py, task_py, gpu_id):
@@ -170,6 +170,9 @@ def main(args):
             return
         logger.info("Scoring completed: All tasks scored.")
 
+        # Return dict is {task_py: (task_name, (mlp_score, mlp_eval_size), (knn_score, knn_eval_size), private, domain)}
+        # print(return_dict)
+
         # Print results
         df = pd.DataFrame(return_dict.items(), columns=["py", "Scores"])
         df.drop(columns=["py"], inplace=True)
@@ -177,19 +180,44 @@ def main(args):
         df["MLP_Score"] = df["Scores"].apply(lambda x: x[1][0])
         df["KNN_Score"] = df["Scores"].apply(lambda x: x[2][0])
         df['Private']   = df["Scores"].apply(lambda x: x[3])
-        df.drop(columns=["Scores"], inplace=True)
-        df.sort_values(by="Task", inplace=True)
+        df['Domain']    = df["Scores"].apply(lambda x: x[4])
+        df = df[df['Private'] == False]
+        df.drop(columns=["Scores", "Private"], inplace=True)
+        df.sort_values(by=["Domain", "Task"], inplace=True)
+        df.set_index(["Domain", "Task"], inplace=True)
 
-        print(f"\nResults:\n{df.to_string(index=False)}")
+        print("\n" + "-" * 50)
 
-        avg_mlp_all, avg_knn_all = weighted_average({k: v[1:-1] for k, v in return_dict.items()})
-        avg_mlp_public, avg_knn_public = weighted_average({k: v[1:-1] for k, v in return_dict.items() if v[-1] == False})
+        print(f"\nEncoder: {args.encoder_py}")
 
-        print("\nWeighted Average MLP Score for All Datasets:", avg_mlp_all)
-        print("Weighted Average KNN Score for All Datasets:", avg_knn_all)
+        print("\n" + "-" * 50)
 
-        print("\nWeighted Average MLP Score for Public Datasets:", avg_mlp_public)
-        print("Weighted Average KNN Score for Public Datasets:", avg_knn_public)
+        print(f"\nResults:\n{df.to_string(index=True)}")
+
+        print("\n" + "-" * 50)
+
+        avg_knn_env, avg_mlp_env = weighted_average({k: v[1:3] for k, v in return_dict.items() if v[4] == "Environment"})
+        print(f"\nWeighted Average MLP Score for Environment:         {avg_mlp_env:.3f}")
+        print(f"Weighted Average KNN Score for Environment:         {avg_knn_env:.3f}")
+
+        avg_mlp_music, avg_knn_music = weighted_average({k: v[1:3] for k, v in return_dict.items() if v[4] == "Music"})
+        print(f"\nWeighted Average MLP Score for Music:               {avg_mlp_music:.3f}")
+        print(f"Weighted Average KNN Score for Music:               {avg_knn_music:.3f}")
+        
+        avg_mlp_speech, avg_knn_speech = weighted_average({k: v[1:3] for k, v in return_dict.items() if v[4] == "Speech"})
+        print(f"\nWeighted Average MLP Score for Speech:              {avg_mlp_speech:.3f}")
+        print(f"Weighted Average KNN Score for Speech:              {avg_knn_speech:.3f}")
+
+        print("\n" + "-" * 50)
+
+        avg_mlp_all, avg_knn_all = weighted_average({k: v[1:3] for k, v in return_dict.items()})
+        avg_mlp_public, avg_knn_public = weighted_average({k: v[1:3] for k, v in return_dict.items() if v[3] == False})
+
+        print(f"\nWeighted Average MLP Score for All Datasets:        {avg_mlp_all:.3f}")
+        print(f"Weighted Average KNN Score for All Datasets:        {avg_knn_all:.3f}")
+
+        print(f"\nWeighted Average MLP Score for Public Datasets:     {avg_mlp_public:.3f}")
+        print(f"Weighted Average KNN Score for Public Datasets:     {avg_knn_public:.3f}")
 
 
 if __name__ == "__main__":

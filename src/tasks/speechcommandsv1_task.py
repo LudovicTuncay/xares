@@ -37,6 +37,7 @@ def speechcommandsv1_config(encoder) -> TaskConfig:
     data_key = "labels"
 
     return TaskConfig(
+        domain="Speech",
         batch_size_train=64,
         encoder=encoder,
         eval_weight=2000,

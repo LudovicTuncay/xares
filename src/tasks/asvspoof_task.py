@@ -7,6 +7,7 @@ def asvspoof2015_config(encoder) -> TaskConfig:
     data_key = "binary_spoof"
     class_label_maps = {"human": 0, "spoof": 1}
     config = TaskConfig(
+        domain="Speech",
         batch_size_train=64,
         encoder=encoder,
         epochs=5,

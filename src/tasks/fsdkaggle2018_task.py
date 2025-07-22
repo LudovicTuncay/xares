@@ -47,6 +47,7 @@ def fsdkaggle2018_config(encoder) -> TaskConfig:
         "Finger_snapping": 40,
     }
     return TaskConfig(
+        domain="Environment",
         batch_size_train=64,
         do_knn=False,
         encoder=encoder,

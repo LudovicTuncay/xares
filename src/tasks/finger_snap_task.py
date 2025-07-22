@@ -8,6 +8,7 @@ def finger_snap_config(encoder) -> TaskConfig:
     }
 
     return TaskConfig(
+        domain="Environment",
         encoder=encoder,
         name="finger_snap",
         formal_name="Finger snap sound",

@@ -8,6 +8,7 @@ def finger_snap_config(encoder) -> TaskConfig:
     }
 
     return TaskConfig(
+        domain="Environment",
         encoder=encoder,
         name="inside_outside_car",
         formal_name="Inside/outside car",

@@ -308,6 +308,7 @@ def vocalimiations_config(encoder) -> TaskConfig:
         "301Source-ambiguous sounds_Surface contact_Scratch_reference": 301,
     }
     config = TaskConfig(
+        domain="Speech",
         encoder=encoder,
         epochs=20,
         eval_weight=1867,

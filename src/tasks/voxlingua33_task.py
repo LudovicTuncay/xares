@@ -41,6 +41,7 @@ def voxlingua33_config(encoder) -> TaskConfig:
     }
 
     config = TaskConfig(
+        domain="Speech",
         batch_size_train=64,
         crop_length=10,
         encoder=encoder,

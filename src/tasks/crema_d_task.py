@@ -3,6 +3,7 @@ from xares.task import TaskConfig
 
 def cremad_config(encoder) -> TaskConfig:
     return TaskConfig(
+        domain="Speech",
         encoder=encoder,
         eval_weight=1116,
         formal_name="CREMA-D",

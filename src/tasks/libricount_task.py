@@ -6,6 +6,7 @@ def libricount_config(encoder) -> TaskConfig:
     class_label_maps = {i: i for i in range(11)}
 
     config = TaskConfig(
+        domain="Speech",
         batch_size_train=64,
         encoder=encoder,
         eval_weight=1144,

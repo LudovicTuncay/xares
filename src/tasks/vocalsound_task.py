@@ -3,6 +3,7 @@ from xares.task import TaskConfig
 
 def vocalsound_config(encoder) -> TaskConfig:
     return TaskConfig(
+        domain="Speech",
         encoder=encoder,
         eval_weight=2000,
         formal_name="VocalSound",

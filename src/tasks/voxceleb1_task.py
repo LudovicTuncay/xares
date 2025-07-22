@@ -1258,6 +1258,7 @@ def voxceleb1_config(encoder) -> TaskConfig:
         "id11251": 1250,
     }
     config = TaskConfig(
+        domain="Speech",
         crop_length=6,
         encoder=encoder,
         epochs=10,

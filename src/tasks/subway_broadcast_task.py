@@ -3,6 +3,7 @@ from xares.task import TaskConfig
 
 def subway_broadcast_config(encoder) -> TaskConfig:
     return TaskConfig(
+        domain="Environment",
         encoder=encoder,
         name="subway_broadcast",
         formal_name="Subway broadcast",

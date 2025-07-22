@@ -28,6 +28,7 @@ from xares.utils import download_hf_model_to_local, download_zenodo_record, mkdi
 class TaskConfig:
     name: str
     formal_name: str = ""
+    domain: Literal["Speech", "Environment", "Music"] = "Speech"
     xares_settings: XaresSettings = field(default_factory=XaresSettings)
     env_root: Path | str | None = None
     disabled: bool = False  # Skip the task, useful for debugging

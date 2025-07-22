@@ -14,6 +14,7 @@ def fma_genre_config(encoder) -> TaskConfig:
         "Instrumental": 7,
     }
     return TaskConfig(
+        domain="Music",
         crop_length=10,  # 10s
         encoder=encoder,
         epochs=3,

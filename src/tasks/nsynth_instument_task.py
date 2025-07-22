@@ -19,6 +19,7 @@ def nysnthinstument_config(encoder) -> TaskConfig:
         "synth_lead": 10,
     }
     config = TaskConfig(
+        domain="Music",
         encoder=encoder,
         eval_weight=2000,
         formal_name="NSynth-Instruments",

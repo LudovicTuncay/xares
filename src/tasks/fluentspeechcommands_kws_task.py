@@ -255,6 +255,7 @@ def fluentspeechcommands_config(encoder) -> TaskConfig:
     }
 
     return TaskConfig(
+        domain="Speech",
         encoder=encoder,
         eval_weight=2000,
         formal_name="Fluent Speech Commands",

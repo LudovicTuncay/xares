@@ -5,6 +5,7 @@ from xares.task import TaskConfig
 
 def librispeech_asr_config(encoder) -> TaskConfig:
     config = TaskConfig(
+        domain="Speech",
         encoder=encoder,
         eval_weight=10000,
         batch_size_train=4,

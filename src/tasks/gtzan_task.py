@@ -15,6 +15,7 @@ def gtzan_genre_config(encoder) -> TaskConfig:
         "rock": 9,
     }
     config = TaskConfig(
+        domain="Music",
         encoder=encoder,
         eval_weight=100,
         formal_name="GTZAN Genre",

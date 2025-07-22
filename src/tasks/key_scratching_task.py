@@ -8,6 +8,7 @@ def key_scratching_config(encoder) -> TaskConfig:
     }
 
     return TaskConfig(
+        domain="Environment",
         encoder=encoder,
         name="key_scratching",
         formal_name="Key scratching car",

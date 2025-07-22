@@ -14,6 +14,7 @@ def ravdess_config(encoder) -> TaskConfig:
     }
 
     config = TaskConfig(
+        domain="Speech",
         encoder=encoder,
         eval_weight=360,
         formal_name="RAVDESS",

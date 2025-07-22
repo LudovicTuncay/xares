@@ -110,6 +110,7 @@ def maestro_config(encoder) -> TaskConfig:
         return target_vector
 
     config = TaskConfig(
+        domain="Music",
         batch_size_encode=1,  # Long samples
         batch_size_train=1,  # Samples are very long, avoid extreme padding
         criterion=torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor(10)),

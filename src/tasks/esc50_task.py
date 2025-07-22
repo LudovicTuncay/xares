@@ -3,6 +3,7 @@ from xares.task import TaskConfig
 
 def esc50_config(encoder) -> TaskConfig:
     config = TaskConfig(
+        domain="Environment",
         encoder=encoder,
         eval_weight=400,
         formal_name="ESC-50",

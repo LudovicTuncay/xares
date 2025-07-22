@@ -5,6 +5,7 @@ from xares.task import TaskConfig
 
 def librispeech_male_female_config(encoder) -> TaskConfig:
     config = TaskConfig(
+        domain="Speech",
         crop_length=5,
         encoder=encoder,
         eval_weight=2620,

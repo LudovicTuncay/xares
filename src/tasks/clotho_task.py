@@ -10,6 +10,7 @@ def data_merge_function_clotho(data_stream):
 
 def clotho_config(encoder) -> TaskConfig:
     task_config = TaskConfig(
+        domain="Environment",
         batch_size_train=128,
         criterion="AudioTextContrastiveLoss",
         crop_length=30,

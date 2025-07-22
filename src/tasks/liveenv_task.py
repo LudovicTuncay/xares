@@ -35,6 +35,7 @@ def liveenv_config(encoder) -> TaskConfig:
     }
 
     return TaskConfig(
+        domain="Environment",
         do_knn=False,
         disabled=True,
         encoder=encoder,

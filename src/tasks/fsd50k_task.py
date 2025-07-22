@@ -217,6 +217,7 @@ def fsd50k_config(encoder) -> TaskConfig:
         return target_vec.tolist()
 
     task_config = TaskConfig(
+        domain="Environment",
         batch_size_train=64,
         criterion="BCEWithLogitsLoss",
         crop_length=10,  # 10s, even though samples are 30s

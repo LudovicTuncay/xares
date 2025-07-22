@@ -15,6 +15,7 @@ def urbansound8k_config(encoder) -> TaskConfig:
         "street_music": 9,
     }
     config = TaskConfig(
+        domain="Environment",
         encoder=encoder,
         eval_weight=873,
         formal_name="UrbanSound 8k",
