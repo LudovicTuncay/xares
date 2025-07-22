@@ -22,6 +22,10 @@ dependencies = [
   "tqdm",
   "webdataset==0.2.100",
   "huggingface-hub>=0.31.4",
+  "dasheng>=0.0.8",
+  "packaging>=25.0",
+  "ninja>=1.11.1.4",
+  "psutil>=7.0.0",
 ]
 authors = [
   {name = "Junbo Zhang", email = "zhangjunbo1@xiaomi.com"},
@@ -41,6 +45,9 @@ Repository = "https://github.com/jimbozhang/xares.git"
 examples = [
   "dasheng",
 ]
+
+[tool.uv]
+no-build-isolation-package = ['flash-attn']
 
 [tool.setuptools.packages.find]
 where = ["src"]
