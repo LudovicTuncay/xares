@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 from dataclasses import dataclass, field
+import os
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Tuple
 
@@ -126,7 +127,11 @@ class XaresTask:
         if self.config.encoder is not None:
             self.encoder_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             self.encoder = self.config.encoder.to(self.encoder_device)
-            self.encoder_name = self.encoder.__class__.__name__
+            # Check if the encoder has a method called "get_instance_name"
+            if hasattr(self.encoder, "get_instance_name") and callable(getattr(self.encoder, "get_instance_name")):
+                self.encoder_name = self.encoder.get_instance_name()
+            else:
+                self.encoder_name = self.encoder.__class__.__name__
         else:
             self.encoder = None
             self.encoder_name = "Unknown"

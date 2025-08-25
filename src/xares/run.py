@@ -1,5 +1,6 @@
 import argparse
 from functools import partial
+from os.path import basename
 
 import pandas as pd
 import torch
@@ -28,7 +29,7 @@ def worker(
     config = attr_from_py_path(task_py, endswith="_config")(encoder)
     if config.disabled:
         logger.warning(f"Task {config.name} is disabled, skipping")
-        return config.formal_name, (0, 0), (0, 0), config.private, config.domain
+        return config.formal_name, (0, 0), (0, 0), config.private, config.domain, config.task_type, config.criterion
     task = XaresTask(config=config)
 
     # Run the task
@@ -59,7 +60,15 @@ def worker(
         logger.info(f"KNN score of {config.name}: {knn_score}")
 
     torch.cuda.empty_cache()
-    return task.config.formal_name, mlp_score, knn_score, task.config.private, task.config.domain
+    return (
+        task.config.formal_name,
+        mlp_score,
+        knn_score,
+        task.config.private,
+        task.config.domain,
+        task.config.task_type,
+        task.config.criterion,
+    )
 
 
 def stage_1(encoder_py, task_py, gpu_id):
@@ -120,6 +129,13 @@ def main(args):
     encoder = attr_from_py_path(args.encoder_py, endswith="Encoder")()
     if not check_audio_encoder(encoder):
         raise ValueError("Invalid encoder")
+
+    ckpt_path = getattr(encoder, "checkpoint_path", None)
+    if ckpt_path:    
+        ckpt_name = basename(ckpt_path)[:-5] # [:-5] to remove .ckpt
+        ckpt_name = ckpt_name.split("-")[2:] # [2:] to remove Audio-JEPA-
+        ckpt_name = " / ".join(ckpt_name)
+    
     del encoder
 
     # Stage 1: Execute make_encoded_tar
@@ -170,54 +186,112 @@ def main(args):
             return
         logger.info("Scoring completed: All tasks scored.")
 
-        # Return dict is {task_py: (task_name, (mlp_score, mlp_eval_size), (knn_score, knn_eval_size), private, domain)}
+        # Return dict is {task_py: (task_name, (mlp_score, mlp_eval_size), (knn_score, knn_eval_size), private, domain, task_type, criterion)}
         # print(return_dict)
 
         # Print results
-        df = pd.DataFrame(return_dict.items(), columns=["py", "Scores"])
-        df.drop(columns=["py"], inplace=True)
-        df["Task"] = df["Scores"].apply(lambda x: x[0])
-        df["MLP_Score"] = df["Scores"].apply(lambda x: x[1][0])
-        df["KNN_Score"] = df["Scores"].apply(lambda x: x[2][0])
-        df['Private']   = df["Scores"].apply(lambda x: x[3])
-        df['Domain']    = df["Scores"].apply(lambda x: x[4])
-        df = df[df['Private'] == False]
-        df.drop(columns=["Scores", "Private"], inplace=True)
-        df.sort_values(by=["Domain", "Task"], inplace=True)
-        df.set_index(["Domain", "Task"], inplace=True)
 
-        print("\n" + "-" * 50)
+        # Keep only public tasks and sort
+        public_items = [(k, v) for k, v in return_dict.items() if v[3] is False]
+        public_items.sort(key=lambda kv: (kv[1][4], kv[1][0]))  # by domain then task name
 
-        print(f"\nEncoder: {args.encoder_py}")
-
-        print("\n" + "-" * 50)
-
-        print(f"\nResults:\n{df.to_string(index=True)}")
-
-        print("\n" + "-" * 50)
-
-        avg_knn_env, avg_mlp_env = weighted_average({k: v[1:3] for k, v in return_dict.items() if v[4] == "Environment"})
-        print(f"\nWeighted Average MLP Score for Environment:         {avg_mlp_env:.3f}")
-        print(f"Weighted Average KNN Score for Environment:         {avg_knn_env:.3f}")
-
-        avg_mlp_music, avg_knn_music = weighted_average({k: v[1:3] for k, v in return_dict.items() if v[4] == "Music"})
-        print(f"\nWeighted Average MLP Score for Music:               {avg_mlp_music:.3f}")
-        print(f"Weighted Average KNN Score for Music:               {avg_knn_music:.3f}")
+        # Helper: safe 3-decimal string or blank
+        def fmt3(x):
+            return f"{x:.3f}" if x is not None else ""
         
-        avg_mlp_speech, avg_knn_speech = weighted_average({k: v[1:3] for k, v in return_dict.items() if v[4] == "Speech"})
-        print(f"\nWeighted Average MLP Score for Speech:              {avg_mlp_speech:.3f}")
-        print(f"Weighted Average KNN Score for Speech:              {avg_knn_speech:.3f}")
+        # Helper: stringify criterion which can be a name or a callable
+        def str_criterion(c):
+            if isinstance(c, str):
+                return c
+            name = getattr(c, "__name__", None)
+            if name is not None:
+                return name
+            return type(c).__name__
 
-        print("\n" + "-" * 50)
+        # Build quick access structures
+        domains = ["Environment", "Music", "Speech"]
+        encoder_col = "**" + ckpt_name + "**" if ckpt_name else args.encoder_py
 
-        avg_mlp_all, avg_knn_all = weighted_average({k: v[1:3] for k, v in return_dict.items()})
-        avg_mlp_public, avg_knn_public = weighted_average({k: v[1:3] for k, v in return_dict.items() if v[3] == False})
+        # ---- Compute weighted averages per domain and overall 
+        def dict_for_domain(domain):
+            return {k: (v[1], v[2]) for k, v in return_dict.items() if (v[4] == domain and v[3] is False)}
 
-        print(f"\nWeighted Average MLP Score for All Datasets:        {avg_mlp_all:.3f}")
-        print(f"Weighted Average KNN Score for All Datasets:        {avg_knn_all:.3f}")
+        # weighted averages return (mlp_avg, knn_avg) when given mapping {k: ((mlp_score, mlp_size), (knn_score, knn_size))}
+        mlp_env, knn_env = weighted_average({k: v[1:3] for k, v in return_dict.items() if (v[4] == "Environment" and v[3] is False)})
+        mlp_mus, knn_mus = weighted_average({k: v[1:3] for k, v in return_dict.items() if (v[4] == "Music" and v[3] is False)})
+        mlp_spe, knn_spe = weighted_average({k: v[1:3] for k, v in return_dict.items() if (v[4] == "Speech" and v[3] is False)})
 
-        print(f"\nWeighted Average MLP Score for Public Datasets:     {avg_mlp_public:.3f}")
-        print(f"Weighted Average KNN Score for Public Datasets:     {avg_knn_public:.3f}")
+        mlp_all, knn_all = weighted_average({k: v[1:3] for k, v in return_dict.items() if v[3] is False})
+
+        domain_avg = {
+            "Environment": (mlp_env, knn_env),
+            "Music":       (mlp_mus, knn_mus),
+            "Speech":      (mlp_spe, knn_spe),
+        }
+
+        # ---- Compute domain weights (sum of eval weights) and overall weights for MLP and KNN
+        domain_weights_mlp = {
+            dom: sum(v[1][1] for _, v in public_items if v[4] == dom)
+            for dom in domains
+        }
+        domain_weights_knn = {
+            dom: sum(v[2][1] for _, v in public_items if v[4] == dom)
+            for dom in domains
+        }
+        overall_weight_mlp = sum(v[1][1] for _, v in public_items)
+        overall_weight_knn = sum(v[2][1] for _, v in public_items)
+
+        # ---- Collect rows for MLP and KNN markdown tables
+        mlp_rows = []
+        knn_rows = []
+
+        for dom in domains:
+            # Domain average row (Task and Type blank)
+            mlp_dom_avg, knn_dom_avg = domain_avg.get(dom, (None, None))
+            mlp_rows.append((dom, "", "", "", domain_weights_mlp.get(dom, 0), fmt3(mlp_dom_avg) if mlp_dom_avg is not None else ""))
+            knn_rows.append((dom, "", "", "", domain_weights_knn.get(dom, 0), fmt3(knn_dom_avg) if knn_dom_avg is not None else ""))
+
+            # Task rows
+            for k, v in public_items:
+                task_name, (mlp_score, mlp_w), (knn_score, knn_w), _, v_dom, task_type, criterion = v
+                if v_dom != dom:
+                    continue
+                if mlp_w != 0:
+                    mlp_rows.append(("", task_name, task_type, str_criterion(criterion), mlp_w, fmt3(mlp_score)))
+                if knn_w != 0:
+                    knn_rows.append(("", task_name, task_type, str_criterion(criterion), knn_w, fmt3(knn_score)))
+
+        # Overall average rows (Domain "Overall", Task and Type blank)
+        mlp_rows.append(("Overall", "", "", "", overall_weight_mlp, fmt3(mlp_all)))
+        knn_rows.append(("Overall", "", "", "", overall_weight_knn, fmt3(knn_all)))
+
+        # ---- Render Markdown
+        def render_markdown(rows, header_title):
+            lines = []
+            # column headers
+            header = ["Domain", "Task", "Type", "Criterion", "Weight", encoder_col]
+            widths = [max(len(str(r[i])) for r in ([header] + rows)) for i in range(6)]
+
+            def fmt_row(row):
+                return "| " + " | ".join(str(val).ljust(widths[i]) for i, val in enumerate(row)) + " |"
+
+            # build table
+            lines.append(f"\n### {header_title}\n")
+            lines.append(fmt_row(header))
+            lines.append("| :" + ": | :".join("-" * (widths[i]-2) for i in range(6)) + ": |")
+            for dom, task, typ, crit, weight, val in rows:
+                display_val = val if val != "0.000" else ""
+                lines.append(fmt_row([dom or "", task or "", typ or "", crit or "", weight, display_val]))
+            return "\n".join(lines)
+
+        print("\n" + "-" * 100)
+        print(f"\nEncoder: {args.encoder_py}")
+        print("\n" + "-" * 100)
+
+        print(render_markdown(mlp_rows, "MLP Results"))
+        print()
+        print(render_markdown(knn_rows, "KNN Results"))
+        print("\n" + "-" * 100)
 
 
 if __name__ == "__main__":

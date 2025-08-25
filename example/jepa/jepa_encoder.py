@@ -8,6 +8,7 @@ Usage
 >>> check_audio_encoder(encoder)      # should print True
 """
 
+from os.path import basename
 from pathlib import Path
 from typing import List, Optional
 import math
@@ -49,14 +50,16 @@ class JEPAEncoder(torch.nn.Module):
 
     def __init__(
         self,
-        checkpoint: Optional[str] = None, # r"example/jepa/checkpoints/JEPA.ckpt",
+        checkpoint: Optional[str] = "example/jepa/checkpoints/Audio-JEPA-16kHz-200k-wu5k-128mels.ckpt", # "example/jepa/checkpoints/Audio-JEPA-16kHz-200k-last.ckpt",
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
     ) -> None:
         super().__init__()
 
+        self.checkpoint_path = checkpoint
+
         # ---- constants -------------------------------------------------- #
         self.device = torch.device(device)
-        self.sampling_rate: int = 32_000           # required by X‑ARES
+        self.sampling_rate: int = 16_000           # required by X‑ARES
         self.clip_length_sec: int = 10             # JEPA was trained on 10 s clips
         self.clip_samples: int = self.clip_length_sec * self.sampling_rate
         self.target_time_bins: int = 256           # Mel‑spec frames per 10 s
@@ -140,6 +143,12 @@ class JEPAEncoder(torch.nn.Module):
     # ---------------------------------------------------------------------
     # helper functions
     # ---------------------------------------------------------------------
+    def get_instance_name(self):
+        if self.checkpoint_path is None:
+            return "Audio-JEPA (HF ckpt)"
+        else:
+            return basename(self.checkpoint_path)[:-5] if self.checkpoint_path else None
+
     def _waveform_to_spectrogram(self, wav: torch.Tensor) -> torch.Tensor:
         """Return (1 x 256 x 128) log-mel spectrogram on *self.device*."""
         if wav.ndim != 1:
