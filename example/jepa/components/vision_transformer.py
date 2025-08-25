@@ -104,7 +104,8 @@ class VisionTransformer(nn.Module):
 
     def __init__(
         self,
-        patch_size=(16, 16),
+        input_size=(256, 128), # T, F
+        patch_size=(16, 16), # T, F
         in_chans=1,
         embed_dim=768,
         depth=12,
@@ -120,7 +121,7 @@ class VisionTransformer(nn.Module):
         self.embed_dim = embed_dim
         self.patch_embed = PatchEmbed(patch_size, in_chans, embed_dim)
         # Positional embedding – initialised for a 128 × 256 mel‑spec (→ 8 × 16 patches)
-        n_init_patches = (128 // patch_size[1]) * (256 // patch_size[0])
+        n_init_patches = (input_size[1] // patch_size[1]) * (input_size[0] // patch_size[0])
         self.pos_embed = nn.Parameter(torch.zeros(1, n_init_patches, embed_dim))
         trunc_normal_(self.pos_embed, std=.02)
 

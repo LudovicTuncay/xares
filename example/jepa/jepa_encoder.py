@@ -82,6 +82,7 @@ class JEPAEncoder(torch.nn.Module):
 
         # ---- JEPA backbone --------------------------------------------- #
         self.encoder = VisionTransformer(
+            input_size=(self.target_time_bins, self.n_mels),
             patch_size=(self.patch_size_t, self.patch_size_f),
             in_chans=1,
             embed_dim=768,
@@ -104,9 +105,9 @@ class JEPAEncoder(torch.nn.Module):
             state = torch.load(ckpt_path, map_location=self.device)
         else:
             local_ckpt = hf_hub_download(
-                        repo_id="ltuncay/Audio-JEPA",         # e.g. "your-username/your-repo"
-                        filename="JEPA.ckpt",                 # e.g. "model.ckpt"
-                        use_auth_token=None                   # only if your repo is private
+                        repo_id="ltuncay/Audio-JEPA",
+                        filename="JEPA.ckpt",
+                        use_auth_token=None
                     )
             state = torch.load(local_ckpt, map_location=self.device)
 
