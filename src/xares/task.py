@@ -140,9 +140,14 @@ class XaresTask:
         torch.manual_seed(self.config.seed)
         np.random.seed(self.config.seed)
 
+
+        self.scratch = Path(os.environ.get("SCRATCH", "."))
+        if self.scratch != ".":
+            self.scratch = self.scratch / Path("xares")  
+
         self.env_dir = Path(self.config.env_root) / self.config.name
-        self.ckpt_dir = self.env_dir / self.config.ckpt_dir_name / self.encoder_name
-        self.encoded_tar_dir = self.env_dir / self.config.embedding_dir_name / self.encoder_name
+        self.ckpt_dir = self.scratch / self.env_dir / self.config.ckpt_dir_name / self.encoder_name
+        self.encoded_tar_dir = self.scratch / self.env_dir / self.config.embedding_dir_name / self.encoder_name
         self.encoded_ready_path = self.encoded_tar_dir / self.config.xares_settings.encoded_ready_filename
         self.ckpt_path = self.ckpt_dir / self.config.ckpt_name
         mkdir_if_not_exists(self.encoded_tar_dir)
