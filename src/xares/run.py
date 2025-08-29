@@ -60,14 +60,39 @@ def worker(
         logger.info(f"KNN score of {config.name}: {knn_score}")
 
     torch.cuda.empty_cache()
+    # Ensure results are CPU-serializable and avoid sending GPU-backed objects
+    def _to_float_int_pair(pair):
+        try:
+            s, w = pair
+        except Exception:
+            return pair
+        # Convert possible numpy/tensor scalars to python types
+        try:
+            s = float(s) if s is not None else None
+        except Exception:
+            pass
+        try:
+            w = int(w)
+        except Exception:
+            pass
+        return (s, w)
+
+    def _criterion_name(c):
+        if isinstance(c, str):
+            return c
+        name = getattr(c, "__name__", None)
+        if name is not None:
+            return name
+        return type(c).__name__
+
     return (
         task.config.formal_name,
-        mlp_score,
-        knn_score,
+        _to_float_int_pair(mlp_score),
+        _to_float_int_pair(knn_score),
         task.config.private,
         task.config.domain,
         task.config.task_type,
-        task.config.criterion,
+        _criterion_name(task.config.criterion),
     )
 
 
