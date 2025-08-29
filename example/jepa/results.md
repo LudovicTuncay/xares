@@ -7,33 +7,33 @@ All JEPA trainings were done using 200k steps unless stated otherwise
 ### Infos & baselines
 
 | **Domain**      | **Task**                 | **Type**    | **Metric**      | **Criterion**            | **Weight** | **dasheng** | **wav2vec2** | **whisper** | **data2vec** |
-| :-------------: | :----------------------: | :---------: | :-------------: | :----------------------: | :--------: | :--: | :--: | :--: | :--: |
-| **Environment** |                          |             |                 |                          | **7071**   |      |      |      |      |
-|                 | Clotho                   | contrastive | recallatk_r1    | AudioTextContrastiveLoss | 1045       | 0.029 | 0.014    | 0.038     | 0.008     |
-|                 | DESED                    | frame       | segmentf1_macro | BCEWithLogitsLoss        | 1153       | 0.537 | 0.313    | 0.127     | 0.136     |
-|                 | ESC-50                   | clip        | accuracy        | CrossEntropyLoss         | 400        | 0.857 | 0.510    | 0.528     | 0.229     |
-|                 | FSD18-Kaggle             | clip        | accuracy        | CrossEntropyLoss         | 1600       | 0.534 | 0.241    | 0.241     | 0.153     |
-|                 | FSD50k                   | clip        | mAP             | BCEWithLogitsLoss        | 2000       | 0.409 | 0.166    | 0.262     | 0.085     |
-|                 | UrbanSound 8k            | clip        | accuracy        | CrossEntropyLoss         | 873        | 0.833 | 0.659    | 0.687     | 0.426     |
-| **Music**       |                          |             |                 |                          | **2965**   | 0.678 | 0.451    | 0.537     | 0.334     |
-|                 | Free Music Archive Small | clip        | accuracy        | CrossEntropyLoss         | 800        | 0.643 | 0.469    | 0.581     | 0.334     |
-|                 | GTZAN Genre              | clip        | accuracy        | CrossEntropyLoss         | 100        | 0.851 | 0.630    | 0.622     | 0.448     |
-|                 | MAESTRO                  | frame       | segmentf1_micro | BCEWithLogitsLoss        | 65         | 0.524 | 0.180    | 0.011     | 0.116     |
-|                 | NSynth-Instruments       | clip        | accuracy        | CrossEntropyLoss         | 2000       | 0.688 | 0.443    | 0.532     | 0.336     |
-| **Speech**      |                          |             |                 |                          | **28716**  | 0.823 | 0.615    | 0.725     | 0.642     |
-|                 | ASV2015                  | clip        | accuracy        | CrossEntropyLoss         | 2000       | 0.964 | 0.924    | 0.966     | 0.937     |
-|                 | CREMA-D                  | clip        | accuracy        | CrossEntropyLoss         | 1116       | 0.767 | 0.541    | 0.572     | 0.523     |
-|                 | Fluent Speech Commands   | clip        | accuracy        | CrossEntropyLoss         | 2000       | 0.946 | 0.468    | 0.776     | 0.978     |
-|                 | LibriCount               | clip        | accuracy        | CrossEntropyLoss         | 1144       | 0.681 | 0.583    | 0.549     | 0.492     |
-|                 | LibriSpeech-MF           | clip        | accuracy        | CrossEntropyLoss         | 2620       | 0.986 | 0.948    | 0.973     | 0.752     |
-|                 | RAVDESS                  | clip        | accuracy        | CrossEntropyLoss         | 360        | 0.749 | 0.442    | 0.459     | 0.467     |
-|                 | Speech Commands V1       | clip        | accuracy        | CrossEntropyLoss         | 2000       | 0.969 | 0.714    | 0.933     | 0.927     |
-|                 | Vocal Imitation          | clip        | accuracy        | CrossEntropyLoss         | 1867       | 0.253 | 0.147    | 0.180     | 0.128     |
-|                 | VocalSound               | clip        | accuracy        | CrossEntropyLoss         | 2000       | 0.910 | 0.768    | 0.860     | 0.803     |
-|                 | VoxCeleb1                | clip        | accuracy        | CrossEntropyLoss         | 2000       | 0.780 | 0.340    | 0.388     | 0.105     |
-|                 | VoxLingua33              | clip        | accuracy        | CrossEntropyLoss         | 1609       | 0.814 | 0.553    | 0.873     | 0.620     |
-|                 | LibriSpeech-100h         | asr         | WER_inv         | WER_inv                  | 10000      | 0.608 | 0.405    | 0.721     | 0.893     |
-| **Overall**     |                          |             |                 |                          | **38752**  | 0.699 | 0.490    | 0.632     | 0.598     |
+| :-------------: | :----------------------: | :---------: | :-------------: | :----------------------: | :--------: | :---------: | :----------: | :---------: | :----------: |
+| **Environment** |                          |             |                 |                          | **7071**   | 0.480       | 0.265        | 0.270       | 0.148        |
+|                 | Clotho                   | contrastive | recallatk_r1    | AudioTextContrastiveLoss | 1045       | 0.029       | 0.014        | 0.038       | 0.008        |
+|                 | DESED                    | frame       | segmentf1_macro | BCEWithLogitsLoss        | 1153       | 0.537       | 0.313        | 0.127       | 0.136        |
+|                 | ESC-50                   | clip        | accuracy        | CrossEntropyLoss         | 400        | 0.857       | 0.510        | 0.528       | 0.229        |
+|                 | FSD18-Kaggle             | clip        | accuracy        | CrossEntropyLoss         | 1600       | 0.534       | 0.241        | 0.241       | 0.153        |
+|                 | FSD50k                   | clip        | mAP             | BCEWithLogitsLoss        | 2000       | 0.409       | 0.166        | 0.262       | 0.085        |
+|                 | UrbanSound 8k            | clip        | accuracy        | CrossEntropyLoss         | 873        | 0.833       | 0.659        | 0.687       | 0.426        |
+| **Music**       |                          |             |                 |                          | **2965**   | 0.678       | 0.451        | 0.537       | 0.334        |
+|                 | Free Music Archive Small | clip        | accuracy        | CrossEntropyLoss         | 800        | 0.643       | 0.469        | 0.581       | 0.334        |
+|                 | GTZAN Genre              | clip        | accuracy        | CrossEntropyLoss         | 100        | 0.851       | 0.630        | 0.622       | 0.448        |
+|                 | MAESTRO                  | frame       | segmentf1_micro | BCEWithLogitsLoss        | 65         | 0.524       | 0.180        | 0.011       | 0.116        |
+|                 | NSynth-Instruments       | clip        | accuracy        | CrossEntropyLoss         | 2000       | 0.688       | 0.443        | 0.532       | 0.336        |
+| **Speech**      |                          |             |                 |                          | **28716**  | 0.823       | 0.615        | 0.725       | 0.642        |
+|                 | ASV2015                  | clip        | accuracy        | CrossEntropyLoss         | 2000       | 0.964       | 0.924        | 0.966       | 0.937        |
+|                 | CREMA-D                  | clip        | accuracy        | CrossEntropyLoss         | 1116       | 0.767       | 0.541        | 0.572       | 0.523        |
+|                 | Fluent Speech Commands   | clip        | accuracy        | CrossEntropyLoss         | 2000       | 0.946       | 0.468        | 0.776       | 0.978        |
+|                 | LibriCount               | clip        | accuracy        | CrossEntropyLoss         | 1144       | 0.681       | 0.583        | 0.549       | 0.492        |
+|                 | LibriSpeech-MF           | clip        | accuracy        | CrossEntropyLoss         | 2620       | 0.986       | 0.948        | 0.973       | 0.752        |
+|                 | RAVDESS                  | clip        | accuracy        | CrossEntropyLoss         | 360        | 0.749       | 0.442        | 0.459       | 0.467        |
+|                 | Speech Commands V1       | clip        | accuracy        | CrossEntropyLoss         | 2000       | 0.969       | 0.714        | 0.933       | 0.927        |
+|                 | Vocal Imitation          | clip        | accuracy        | CrossEntropyLoss         | 1867       | 0.253       | 0.147        | 0.180       | 0.128        |
+|                 | VocalSound               | clip        | accuracy        | CrossEntropyLoss         | 2000       | 0.910       | 0.768        | 0.860       | 0.803        |
+|                 | VoxCeleb1                | clip        | accuracy        | CrossEntropyLoss         | 2000       | 0.780       | 0.340        | 0.388       | 0.105        |
+|                 | VoxLingua33              | clip        | accuracy        | CrossEntropyLoss         | 1609       | 0.814       | 0.553        | 0.873       | 0.620        |
+|                 | LibriSpeech-100h         | asr         | WER_inv         | WER_inv                  | 10000      | 0.608       | 0.405        | 0.721       | 0.893        |
+| **Overall**     |                          |             |                 |                          | **38752**  | 0.699       | 0.490        | 0.632       | 0.598        |
 
 
 | **Domain**      | **Task**                 | **Type**    | **Criterion**            | **Weight** | ****16kHz / 200k / wu5k / 160mels**** |
