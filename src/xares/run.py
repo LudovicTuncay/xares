@@ -29,7 +29,18 @@ def worker(
     config = attr_from_py_path(task_py, endswith="_config")(encoder)
     if config.disabled:
         logger.warning(f"Task {config.name} is disabled, skipping")
-        return config.formal_name, (0, 0), (0, 0), config.private, config.domain, config.task_type, config.criterion
+        crit = config.criterion
+        crit_name = crit if isinstance(crit, str) else (getattr(crit, "__name__", None) or type(crit).__name__)
+        return (
+            config.formal_name,
+            (0, 0),
+            (0, 0),
+            config.private,
+            config.domain,
+            config.task_type,
+            crit_name,
+            str(config.metric),
+        )
     task = XaresTask(config=config)
 
     # Run the task
@@ -93,6 +104,7 @@ def worker(
         task.config.domain,
         task.config.task_type,
         _criterion_name(task.config.criterion),
+        str(task.config.metric),
     )
 
 
@@ -155,10 +167,12 @@ def main(args):
     if not check_audio_encoder(encoder):
         raise ValueError("Invalid encoder")
 
+    # Prepare a friendly column title for encoder
+    ckpt_name = None
     ckpt_path = getattr(encoder, "checkpoint_path", None)
-    if ckpt_path:    
-        ckpt_name = basename(ckpt_path)[:-5] # [:-5] to remove .ckpt
-        ckpt_name = ckpt_name.split("-")[2:] # [2:] to remove Audio-JEPA-
+    if ckpt_path:
+        ckpt_name = basename(ckpt_path)[:-5]  # [:-5] to remove .ckpt
+        ckpt_name = ckpt_name.split("-")[2:]  # [2:] to remove Audio-JEPA-
         ckpt_name = " / ".join(ckpt_name)
     
     del encoder
@@ -211,7 +225,7 @@ def main(args):
             return
         logger.info("Scoring completed: All tasks scored.")
 
-        # Return dict is {task_py: (task_name, (mlp_score, mlp_eval_size), (knn_score, knn_eval_size), private, domain, task_type, criterion)}
+        # Return dict is {task_py: (task_name, (mlp_score, mlp_eval_size), (knn_score, knn_eval_size), private, domain, task_type, criterion, metric)}
         # print(return_dict)
 
         # Print results
@@ -273,29 +287,29 @@ def main(args):
         for dom in domains:
             # Domain average row (Task and Type blank)
             mlp_dom_avg, knn_dom_avg = domain_avg.get(dom, (None, None))
-            mlp_rows.append((dom, "", "", "", domain_weights_mlp.get(dom, 0), fmt3(mlp_dom_avg) if mlp_dom_avg is not None else ""))
-            knn_rows.append((dom, "", "", "", domain_weights_knn.get(dom, 0), fmt3(knn_dom_avg) if knn_dom_avg is not None else ""))
+            mlp_rows.append(("**"+dom+"**", "", "", "", "", domain_weights_mlp.get(dom, 0), fmt3(mlp_dom_avg) if mlp_dom_avg is not None else ""))
+            knn_rows.append(("**"+dom+"**", "", "", "", "", domain_weights_knn.get(dom, 0), fmt3(knn_dom_avg) if knn_dom_avg is not None else ""))
 
             # Task rows
             for k, v in public_items:
-                task_name, (mlp_score, mlp_w), (knn_score, knn_w), _, v_dom, task_type, criterion = v
+                task_name, (mlp_score, mlp_w), (knn_score, knn_w), _, v_dom, task_type, criterion, metric_name = v
                 if v_dom != dom:
                     continue
                 if mlp_w != 0:
-                    mlp_rows.append(("", task_name, task_type, str_criterion(criterion), mlp_w, fmt3(mlp_score)))
+                    mlp_rows.append(("", task_name, task_type, metric_name, str_criterion(criterion), mlp_w, fmt3(mlp_score)))
                 if knn_w != 0:
-                    knn_rows.append(("", task_name, task_type, str_criterion(criterion), knn_w, fmt3(knn_score)))
+                    knn_rows.append(("", task_name, task_type, metric_name, str_criterion(criterion), knn_w, fmt3(knn_score)))
 
         # Overall average rows (Domain "Overall", Task and Type blank)
-        mlp_rows.append(("Overall", "", "", "", overall_weight_mlp, fmt3(mlp_all)))
-        knn_rows.append(("Overall", "", "", "", overall_weight_knn, fmt3(knn_all)))
+        mlp_rows.append(("Overall", "", "", "", "", overall_weight_mlp, fmt3(mlp_all)))
+        knn_rows.append(("Overall", "", "", "", "", overall_weight_knn, fmt3(knn_all)))
 
         # ---- Render Markdown
         def render_markdown(rows, header_title):
             lines = []
             # column headers
-            header = ["Domain", "Task", "Type", "Criterion", "Weight", encoder_col]
-            widths = [max(len(str(r[i])) for r in ([header] + rows)) for i in range(6)]
+            header = ["**Domain**", "**Task**", "**Type**", "**Metric**", "**Criterion**", "**Weight**", "**"+encoder_col+"**"]
+            widths = [max(len(str(r[i])) for r in ([header] + rows)) for i in range(7)]
 
             def fmt_row(row):
                 return "| " + " | ".join(str(val).ljust(widths[i]) for i, val in enumerate(row)) + " |"
@@ -303,10 +317,10 @@ def main(args):
             # build table
             lines.append(f"\n### {header_title}\n")
             lines.append(fmt_row(header))
-            lines.append("| :" + ": | :".join("-" * (widths[i]-2) for i in range(6)) + ": |")
-            for dom, task, typ, crit, weight, val in rows:
+            lines.append("| :" + ": | :".join("-" * (widths[i]-2) for i in range(7)) + ": |")
+            for dom, task, typ, metric_name, crit, weight, val in rows:
                 display_val = val if val != "0.000" else ""
-                lines.append(fmt_row([dom or "", task or "", typ or "", crit or "", weight, display_val]))
+                lines.append(fmt_row([dom or "", task or "", typ or "", metric_name or "", crit or "", weight, display_val]))
             return "\n".join(lines)
 
         print("\n" + "-" * 100)
