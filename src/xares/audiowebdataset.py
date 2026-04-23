@@ -1,3 +1,4 @@
+from __future__ import annotations
 import json
 import warnings
 from functools import partial
@@ -50,7 +51,9 @@ def _seq_crop_audio(
         if audio.abs().max() >= 0.99 and drop_clipped:
             continue
         if crop_length is not None:
-            crops = crop_or_pad_audio(audio.float(), crop_size=(crop_length * sr), pad_last=pad_last)
+            crops = crop_or_pad_audio(
+                audio.float(), crop_size=(crop_length * sr), pad_last=pad_last
+            )
         else:
             crops = [audio.float()]
 
@@ -67,14 +70,18 @@ class Audiowebdataset(wds.DataPipeline):
         target_sample_rate: None | int = None,
         batch_size: None | int = None,
         filter_function: None | Callable = None,
-        rename_keys: Dict[str, str] = dict(audio="flac;mp3;sox;wav;m4a;ogg;wma", filename="__key__"),
+        rename_keys: Dict[str, str] = dict(
+            audio="flac;mp3;sox;wav;m4a;ogg;wma", filename="__key__"
+        ),
         map_kwargs: None | Dict[str, Callable] = None,
         merge_function: (
             None | Callable
         ) = None,  # merge function is called before batching. In the merge function we can operate on the data in form of a tuple
         handler=fast_warn_and_continue,
     ):
-        pipeline: List = [wds.ResampledShards(urls) if resample else wds.SimpleShardList(urls)]
+        pipeline: List = [
+            wds.ResampledShards(urls) if resample else wds.SimpleShardList(urls)
+        ]
 
         if tar_shuffle is not None:
             # Tar wise shuffle
@@ -84,7 +91,6 @@ class Audiowebdataset(wds.DataPipeline):
                         bufsize=tar_shuffle,
                         initial=tar_shuffle // 4,
                     ),
-                    wds.split_by_node,
                     wds.split_by_worker,
                     # at this point, we have an iterator over the shards assigned to each worker at each node
                     wds.tarfile_to_samples(handler=handler),
@@ -95,10 +101,17 @@ class Audiowebdataset(wds.DataPipeline):
                 ]
             )
         else:
-            pipeline.extend([wds.split_by_node, wds.split_by_worker, wds.tarfile_to_samples(handler=handler)])
+            pipeline.extend(
+                [wds.split_by_worker, wds.tarfile_to_samples(handler=handler)]
+            )
 
         # Decode i.e., bytes object to a python-accessible obj.
-        pipeline.extend([wds.decode(wds.torch_audio, handler=handler), wds.rename(**rename_keys, handler=handler)])
+        pipeline.extend(
+            [
+                wds.decode(wds.torch_audio, handler=handler),
+                wds.rename(**rename_keys, handler=handler),
+            ]
+        )
 
         if map_kwargs:
             pipeline.extend([wds.map_dict(**map_kwargs)])
@@ -108,9 +121,13 @@ class Audiowebdataset(wds.DataPipeline):
 
         # Resample audio, useful when dataset is not monotonous in sampling rate
         if target_sample_rate:
-            assert "audio" in rename_keys.keys(), "target_sample_rate requires key_maps=dict(audio='flac;mp3;wav')"
+            assert "audio" in rename_keys.keys(), (
+                "target_sample_rate requires key_maps=dict(audio='flac;mp3;wav')"
+            )
 
-            def resample_audio(audio_sr: Tuple[torch.Tensor, int]) -> Tuple[torch.Tensor, int]:
+            def resample_audio(
+                audio_sr: Tuple[torch.Tensor, int],
+            ) -> Tuple[torch.Tensor, int]:
                 audio, sr = audio_sr
                 audio = torchaudio.functional.resample(audio, sr, target_sample_rate)
                 return (audio, target_sample_rate)
@@ -133,7 +150,9 @@ class Audiowebdataset(wds.DataPipeline):
                 wds.batched(
                     batch_size,
                     collation_fn=partial(
-                        wds.filters.default_collation_fn, combine_tensors=False, combine_scalars=False
+                        wds.filters.default_collation_fn,
+                        combine_tensors=False,
+                        combine_scalars=False,
                     ),
                 )
             )
@@ -180,7 +199,9 @@ def pad(tensorlist: Sequence[torch.Tensor], padding_value: float = 0.0):
     batch_dim = len(lengths)
     num_raw_samples = max(lengths)
     out_dims = (batch_dim,) + trailing_dims + (num_raw_samples,)
-    out_tensor = torch.full(out_dims, fill_value=padding_value, dtype=tensorlist[0].dtype)
+    out_tensor = torch.full(
+        out_dims, fill_value=padding_value, dtype=tensorlist[0].dtype
+    )
     for i, tensor in enumerate(tensorlist):
         length = tensor.shape[-1]
         out_tensor[i, ..., :length] = tensor[..., :length]
@@ -188,7 +209,10 @@ def pad(tensorlist: Sequence[torch.Tensor], padding_value: float = 0.0):
 
 
 def collate_with_lengths_wds(
-    samples: List[Iterable], combine_scalars: bool = True, flatten: bool = True, combine_tensors: bool = True
+    samples: List[Iterable],
+    combine_scalars: bool = True,
+    flatten: bool = True,
+    combine_tensors: bool = True,
 ):
     batched = list(zip(*samples))
     result = []
@@ -225,16 +249,24 @@ def create_rawaudio_webdataset(
 ):
     dataset_kwargs = dict(
         batch_size=batch_size,
-        rename_keys=(dict(audio="flac;mp3;sox;wav;m4a;ogg;wma", json="json", filename="__key__")),
+        rename_keys=(
+            dict(audio="flac;mp3;sox;wav;m4a;ogg;wma", json="json", filename="__key__")
+        ),
         target_sample_rate=target_sample_rate,
         merge_function=partial(
-            _seq_crop_audio, crop_length=crop_length, mono=mono, drop_clipped=False, pad_last=pad_last
+            _seq_crop_audio,
+            crop_length=crop_length,
+            mono=mono,
+            drop_clipped=False,
+            pad_last=pad_last,
         ),
     )
     urls = expand_with_brace(urls)
     dataset = Audiowebdataset(urls, **dataset_kwargs)
     # Set num_workers at most to number of tars, otherwise some processes will do nothing, slowing down dataloading
-    dataloader = wds.WebLoader(dataset, num_workers=min(len(urls), num_workers), batch_size=None).unbatched()
+    dataloader = wds.WebLoader(
+        dataset, num_workers=min(len(urls), num_workers), batch_size=None
+    ).unbatched()
     dataloader = dataloader.batched(
         batch_size,
         collation_fn=partial(collate_with_lengths_wds, flatten=False),
@@ -308,7 +340,10 @@ def create_embedding_webdataset(
     )
     if balanced_sampler:
         assert isinstance(urls, dict)
-        ds = {k: Audiowebdataset(expand_with_brace(train_data), **dataset_kwargs) for k, train_data in urls.items()}
+        ds = {
+            k: Audiowebdataset(expand_with_brace(train_data), **dataset_kwargs)
+            for k, train_data in urls.items()
+        }
         dataset = BalancedDatasetSampler(**ds)
     else:
         assert isinstance(urls, list)
@@ -317,13 +352,16 @@ def create_embedding_webdataset(
     dataloader = wds.WebLoader(
         dataset,
         batch_size=None,
-        pin_memory=True,
+        pin_memory=num_workers > 0,
         num_workers=num_workers,
+        persistent_workers=False,
     ).unbatched()
     if training:
         dataloader = dataloader.shuffle(512)
         if sort_by_length:
-            dataloader = dataloader.compose(apply_sort_by_length(bufsize=512, reverse=True))
+            dataloader = dataloader.compose(
+                apply_sort_by_length(bufsize=512, reverse=True)
+            )
     dataloader = dataloader.batched(
         batch_size,
         collation_fn=partial(collate_with_lengths_wds, flatten=False),
@@ -340,9 +378,13 @@ def write_audio_tar(
     force: bool = False,
     min_length: int = 100,
 ):
-    assert len(audio_paths) == len(labels), "Number of audio files and labels must match."
+    assert len(audio_paths) == len(labels), (
+        "Number of audio files and labels must match."
+    )
 
-    assert len(audio_paths) >= num_shards, "Number of shards must be less than number of audio files."
+    assert len(audio_paths) >= num_shards, (
+        "Number of shards must be less than number of audio files."
+    )
     shard_size = (len(audio_paths) + num_shards - 1) // num_shards
 
     def make_sample(filename, label=None):
