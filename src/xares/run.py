@@ -99,7 +99,14 @@ def stage_2(encoder_py, task_py, result: dict):
 
 def main(args):
     setup_global_logger()
-    enable_multiprocessing = args.max_jobs > 0
+    # Cap pool size to number of tasks — more workers than tasks causes deadlocks
+    # with mp.Manager proxy objects held by idle workers during pool shutdown.
+    if args.max_jobs > len(args.tasks_py):
+        logger.info(
+            f"Clamping --max-jobs from {args.max_jobs} to {len(args.tasks_py)} (number of tasks)"
+        )
+        args.max_jobs = len(args.tasks_py)
+    enable_multiprocessing = args.max_jobs > 1
     if enable_multiprocessing:
         torch.multiprocessing.set_start_method("spawn")
 
