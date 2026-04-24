@@ -394,6 +394,31 @@ class XaresTask:
             self.trainer.load_state_dict(torch.load(self.ckpt_path))
             return
 
+        from xares.audiowebdataset import expand_with_brace
+
+        train_files = expand_with_brace(train_url)
+        val_files = expand_with_brace(validation_url)
+        if not train_files:
+            logger.error(
+                f"[{self.config.name}] No training tar files matched: {train_url}\n"
+                f"  Try: rm {self.encoded_ready_path}  then re-run encoding."
+            )
+            raise FileNotFoundError(
+                f"No training tar files for {self.config.name}: {train_url}"
+            )
+        if not val_files:
+            logger.error(
+                f"[{self.config.name}] No validation tar files matched: {validation_url}\n"
+                f"  Try: rm {self.encoded_ready_path}  then re-run encoding."
+            )
+            raise FileNotFoundError(
+                f"No validation tar files for {self.config.name}: {validation_url}"
+            )
+        logger.debug(
+            f"[{self.config.name}] Train tars ({len(train_files)}): {train_files}"
+        )
+        logger.debug(f"[{self.config.name}] Val tars ({len(val_files)}): {val_files}")
+
         dl_train = create_embedding_webdataset(
             train_url,
             tar_shuffle=2000,
@@ -417,10 +442,12 @@ class XaresTask:
         try:
             self.trainer.run(dl_train, dl_val)
         except Exception as e:
-            if "at least one example" in str(e) or "zero size" in str(e):
-                logger.error(
-                    f"Empty dataloader for {self.config.name}. Try delete {self.encoded_ready_path} and re-run."
-                )
+            logger.error(
+                f"[{self.config.name}] Training failed: {e}\n"
+                f"  Train URLs: {train_url}\n"
+                f"  Val URLs:   {validation_url}\n"
+                f"  Try: rm {self.encoded_ready_path}  then re-run encoding."
+            )
             raise
 
     def evaluate_mlp(
@@ -437,6 +464,18 @@ class XaresTask:
                 logger.warning(
                     f"No checkpoint found at {self.ckpt_path}. Skip loading."
                 )
+
+        from xares.audiowebdataset import expand_with_brace
+
+        eval_files = expand_with_brace(eval_url)
+        if not eval_files:
+            logger.error(
+                f"[{self.config.name}] No evaluation tar files matched: {eval_url}\n"
+                f"  Try: rm {self.encoded_ready_path}  then re-run encoding."
+            )
+            raise FileNotFoundError(
+                f"No evaluation tar files for {self.config.name}: {eval_url}"
+            )
 
         dl = create_embedding_webdataset(
             eval_url,

@@ -215,7 +215,8 @@ class Trainer:
             except StopIteration:
                 logger.warning(
                     f"Epoch {trainer.state.epoch}: validation DataLoader yielded 0 batches, skipping validation. "
-                    "This may indicate corrupted/empty encoded tar files."
+                    "Encoded tar files may be empty or corrupt — "
+                    "delete the .encoded_ready marker and re-run encoding."
                 )
                 return
 
