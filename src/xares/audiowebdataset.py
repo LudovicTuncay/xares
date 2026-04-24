@@ -1,4 +1,5 @@
 from __future__ import annotations
+import io
 import json
 import warnings
 from functools import partial
@@ -6,10 +7,22 @@ from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Union  # type: ignore
 
 import numpy as np
+import soundfile as sf
 import torch
 import torchaudio
 import webdataset as wds
 from loguru import logger
+
+_AUDIO_EXTENSIONS = {"flac", "mp3", "wav", "ogg", "wma"}
+
+
+def soundfile_audio(key, data):
+    """Decode audio via soundfile (avoids torchaudio's torchcodec requirement)."""
+    extension = key.rsplit(".", 1)[-1] if "." in key else ""
+    if extension not in _AUDIO_EXTENSIONS:
+        return None
+    audio, sr = sf.read(io.BytesIO(data))
+    return torch.from_numpy(audio).float(), sr
 
 
 def fast_warn_and_continue(exn):
@@ -52,7 +65,7 @@ def _seq_crop_audio(
             continue
         if crop_length is not None:
             crops = crop_or_pad_audio(
-                audio.float(), crop_size=(crop_length * sr), pad_last=pad_last
+                audio.float(), crop_size=int(crop_length * sr), pad_last=pad_last
             )
         else:
             crops = [audio.float()]
@@ -108,7 +121,7 @@ class Audiowebdataset(wds.DataPipeline):
         # Decode i.e., bytes object to a python-accessible obj.
         pipeline.extend(
             [
-                wds.decode(wds.torch_audio, handler=handler),
+                wds.decode(soundfile_audio, handler=handler),
                 wds.rename(**rename_keys, handler=handler),
             ]
         )

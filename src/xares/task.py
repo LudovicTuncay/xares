@@ -260,6 +260,8 @@ class XaresTask:
             for split in self.config.audio_tar_name_of_split
         }
 
+        mkdir_if_not_exists(self.encoded_tar_dir)
+
         for split in audio_tar_path_of_split:
             logger.info(f"Encoding audio for split {split} ...")
             logger.debug(f"Using data from {audio_tar_path_of_split[split]} ... ")
@@ -280,6 +282,7 @@ class XaresTask:
                 verbose=False,
             )
 
+            n_written = 0
             with torch.inference_mode():
                 for enum_item, ((audio, _), json_data, filenames) in tqdm(
                     enumerate(dl), desc=f"Encoding {split}", leave=True
@@ -298,8 +301,31 @@ class XaresTask:
                                 "__key__": f"{filename}{enum_item}",
                             }
                         )
+                        n_written += 1
+            sink.close()
+
+            if n_written == 0:
+                logger.error(
+                    f"Encoding produced 0 samples for split '{split}' of task "
+                    f"'{self.config.name}'. Raw audio DataLoader may be empty or "
+                    f"all samples were filtered. NOT marking as ready."
+                )
+                return
 
         self.encoded_ready_path.touch()
+
+    def _clear_encodings(self):
+        """Delete encoded embeddings and the ready marker so re-encoding can run."""
+        import shutil
+
+        if self.encoded_ready_path.exists():
+            self.encoded_ready_path.unlink()
+        if self.encoded_tar_dir.exists():
+            shutil.rmtree(self.encoded_tar_dir)
+        logger.info(
+            f"[{self.config.name}] Cleared encodings at {self.encoded_tar_dir}. "
+            "Will re-encode on next attempt."
+        )
 
     def run_mlp(self) -> Tuple[float, int]:
         mlp_score = 0
@@ -316,6 +342,20 @@ class XaresTask:
             )
             return mlp_score, eval_size
 
+        try:
+            return self._run_mlp_inner(score_file)
+        except FileNotFoundError:
+            if self.encoder is None:
+                raise  # can't re-encode without an encoder
+            logger.warning(
+                f"[{self.config.name}] Encoded tar files missing or corrupt. "
+                "Clearing encodings and re-encoding..."
+            )
+            self._clear_encodings()
+            self.make_encoded_tar()
+            return self._run_mlp_inner(score_file)
+
+    def _run_mlp_inner(self, score_file) -> Tuple[float, int]:
         if self.config.k_fold_splits:
             # K-fold cross validation
             acc = []
@@ -506,6 +546,20 @@ class XaresTask:
             )
             return knn_score, eval_size
 
+        try:
+            return self._run_knn_inner(score_file)
+        except FileNotFoundError:
+            if self.encoder is None:
+                raise  # can't re-encode without an encoder
+            logger.warning(
+                f"[{self.config.name}] Encoded tar files missing or corrupt. "
+                "Clearing encodings and re-encoding..."
+            )
+            self._clear_encodings()
+            self.make_encoded_tar()
+            return self._run_knn_inner(score_file)
+
+    def _run_knn_inner(self, score_file) -> Tuple[float, int]:
         if self.config.k_fold_splits:
             # K-fold cross validation
             scores = []
