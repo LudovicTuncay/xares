@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 from dataclasses import InitVar, dataclass, field
 from typing import Any, Dict, Iterable, Literal, Tuple
 
@@ -205,16 +206,20 @@ class Trainer:
 
         @self.ignite_trainer.on(Events.EPOCH_COMPLETED(every=self.valid_every))
         def log_validation_results(trainer):
+            # Pre-check: peek one batch to verify the dataloader isn't empty.
+            # Running ignite on an empty iterator causes NotComputableError from
+            # metrics and leaves stale engine state that breaks subsequent epochs.
+            dev_iter = iter(dl_dev)
             try:
-                self.ignite_validator.run(dl_dev)
-            except Exception as e:
-                if "at least one example" in str(e):
-                    logger.warning(
-                        f"Epoch {trainer.state.epoch}: validation DataLoader yielded 0 batches, skipping validation. "
-                        "This may indicate corrupted/empty encoded tar files."
-                    )
-                    return
-                raise
+                first_batch = next(dev_iter)
+            except StopIteration:
+                logger.warning(
+                    f"Epoch {trainer.state.epoch}: validation DataLoader yielded 0 batches, skipping validation. "
+                    "This may indicate corrupted/empty encoded tar files."
+                )
+                return
+
+            self.ignite_validator.run(itertools.chain([first_batch], dev_iter))
             metrics = self.ignite_validator.state.metrics
             logger.info(
                 f"Epoch: {trainer.state.epoch} {self.metric}: {metrics[self.metric]:.3f}  Avg loss: {metrics['loss']:.5f}"

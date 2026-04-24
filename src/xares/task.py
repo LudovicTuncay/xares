@@ -416,14 +416,12 @@ class XaresTask:
 
         try:
             self.trainer.run(dl_train, dl_val)
-        except RuntimeError as e:
-            if "at least one example" in str(e):
+        except Exception as e:
+            if "at least one example" in str(e) or "zero size" in str(e):
                 logger.error(
                     f"Empty dataloader for {self.config.name}. Try delete {self.encoded_ready_path} and re-run."
                 )
-                raise
-            else:
-                raise
+            raise
 
     def evaluate_mlp(
         self, eval_url: list, load_ckpt: bool = False
