@@ -1,30 +1,9 @@
 from __future__ import annotations
+
 import argparse
 import gc
 import os
 from functools import partial
-
-import pandas as pd
-import torch
-import torch.multiprocessing as mp
-from loguru import logger
-
-# Suppress spurious "leaked semaphore" warnings from Python >=3.12 resource tracker.
-# The resource tracker subprocess reports these at shutdown even when no actual leak exists;
-# this is a known false positive with torch.multiprocessing + spawn start method + CUDA.
-# PYTHONWARNINGS propagates to the resource tracker child process.
-_pw = os.environ.get("PYTHONWARNINGS", "")
-_semaphore_filter = "ignore::UserWarning:multiprocessing.resource_tracker"
-if _semaphore_filter not in _pw:
-    os.environ["PYTHONWARNINGS"] = (
-        f"{_pw},{_semaphore_filter}" if _pw else _semaphore_filter
-    )
-
-from xares.audio_encoder_checker import check_audio_encoder
-from xares.common import setup_global_logger
-from xares.metrics import weighted_average
-from xares.task import XaresTask
-from xares.utils import attr_from_py_path
 
 
 def worker(
@@ -35,19 +14,21 @@ def worker(
     do_mlp: bool = False,
     do_knn: bool = False,
 ):
-    # Encoder setup
+    import torch
+    from loguru import logger
+    from xares.task import XaresTask
+    from xares.utils import attr_from_py_path
+
     encoder = (
         attr_from_py_path(encoder_py, endswith="Encoder")() if encoder_py else None
     )
 
-    # Task setup
     config = attr_from_py_path(task_py, endswith="_config")(encoder)
     if config.disabled:
         logger.warning(f"Task {config.name} is disabled, skipping")
         return config.formal_name, (0, 0), (0, 0), True
     task = XaresTask(config=config)
 
-    # Run the task
     if do_download:
         logger.info(f"Downloading data for task {config.name} ...")
         task.download_audio_tar()
@@ -85,20 +66,49 @@ def worker(
 
 
 def stage_1(encoder_py, task_py, gpu_id):
+    import torch
+
     torch.cuda.set_device(gpu_id)
     return worker(encoder_py, task_py, do_encode=True)
 
 
 def stage_2(encoder_py, task_py, result: dict):
+    from loguru import logger
+    from xares.utils import attr_from_py_path
+
     try:
         result.update({task_py: worker(encoder_py, task_py, do_mlp=True, do_knn=True)})
     except Exception as e:
         logger.error(f"Task {task_py} failed in stage 2: {e}")
-        result.update({task_py: (task_py, (0, 0), (0, 0), True)})
+        try:
+            _cfg = attr_from_py_path(task_py, endswith="_config")(None)
+            _name = _cfg.formal_name
+            _private = _cfg.private
+        except Exception:
+            _name = task_py
+            _private = True
+        result.update({task_py: (_name, (0, 0), (0, 0), _private)})
 
 
 def main(args):
+    import pandas as pd
+    import torch
+    import torch.multiprocessing as mp
+    from loguru import logger
+    from xares.common import setup_global_logger
+    from xares.metrics import weighted_average
+    from xares.utils import attr_from_py_path
+
+    # Suppress spurious "leaked semaphore" warnings from Python >=3.12 resource tracker.
+    _pw = os.environ.get("PYTHONWARNINGS", "")
+    _semaphore_filter = "ignore::UserWarning:multiprocessing.resource_tracker"
+    if _semaphore_filter not in _pw:
+        os.environ["PYTHONWARNINGS"] = (
+            f"{_pw},{_semaphore_filter}" if _pw else _semaphore_filter
+        )
+
     setup_global_logger()
+
     # Cap pool size to number of tasks — more workers than tasks causes deadlocks
     # with mp.Manager proxy objects held by idle workers during pool shutdown.
     if args.max_jobs > len(args.tasks_py):
@@ -147,7 +157,7 @@ def main(args):
     if args.to_stage == 0:
         return
 
-    # Check if the encoder supports the multiprocessing
+    # Check if the encoder supports multiprocessing
     if enable_multiprocessing:
         try:
             with mp.Pool(processes=1) as pool:
@@ -166,8 +176,6 @@ def main(args):
 
     # Double check the encoder and download the pretrained weights
     encoder = attr_from_py_path(args.encoder_py, endswith="Encoder")()
-    # if not check_audio_encoder(encoder):
-    #     raise ValueError("Invalid encoder")
     del encoder
 
     # Stage 1: Execute make_encoded_tar
@@ -250,8 +258,20 @@ def main(args):
             print("Weighted Average KNN Score for Public Datasets:", avg_knn_public)
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run a task")
+def main_cli():
+    # Ensure CWD is on sys.path so that file-path based task/encoder imports
+    # (e.g. "src/tasks/esc50_task.py") resolve correctly when invoked via
+    # the console_scripts entry point.
+    import sys
+
+    cwd = os.getcwd()
+    if cwd not in sys.path:
+        sys.path.insert(0, cwd)
+
+    parser = argparse.ArgumentParser(
+        prog="xares",
+        description="eXtensive Audio Representation and Evaluation Suite",
+    )
     parser.add_argument(
         "encoder_py",
         type=str,
@@ -270,3 +290,7 @@ if __name__ == "__main__":
     parser.add_argument("--to-stage", default=2, type=int, help="Last stage to run.")
     args = parser.parse_args()
     main(args)
+
+
+if __name__ == "__main__":
+    main_cli()
