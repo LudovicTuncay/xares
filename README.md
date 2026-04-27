@@ -9,6 +9,10 @@
 X-ARES (pron /eks ˈeəz/) is an audio encoder benchmark that ​automatically trains task-specific output layers​ (including MLPs and k-NN) ​on user provided encoders.
 It is heavily inspired by the [HEAR benchmark](https://hearbenchmark.com/).
 
+Users provide a single pretrained audioencoder, which outputs frame-level embeddings. Embeddings are evaluated using a fine-tuned MLP layer for clip- and frame-level tasks. Further a non-parameterized kNN algorithm is used to evaluate the quality of embeddings. For specialized tasks, pre-trained decoders are incorporated as task-specific components.
+
+<img src="https://arxiv.org/html/2505.16369v2/x1.png" alt="framework" width="75%">
+
 ## Supported tasks
 
 ### Speech
