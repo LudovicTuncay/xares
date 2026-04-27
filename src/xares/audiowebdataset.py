@@ -8,6 +8,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Un
 
 import numpy as np
 import soundfile as sf
+import soxr
 import torch
 import torchaudio
 import webdataset as wds
@@ -60,7 +61,7 @@ def _seq_crop_audio(
         audio, *extra = sample
         audio, sr = audio
         if mono and audio.ndim == 2:
-            audio = audio.mean(0)
+            audio = audio.mean(-1)
         if audio.abs().max() >= 0.99 and drop_clipped:
             continue
         if crop_length is not None:
@@ -142,7 +143,10 @@ class Audiowebdataset(wds.DataPipeline):
                 audio_sr: Tuple[torch.Tensor, int],
             ) -> Tuple[torch.Tensor, int]:
                 audio, sr = audio_sr
-                audio = torchaudio.functional.resample(audio, sr, target_sample_rate)
+                if sr != target_sample_rate:
+                    audio = torch.from_numpy(
+                        soxr.resample(audio.numpy(), sr, target_sample_rate)
+                    ).float()
                 return (audio, target_sample_rate)
 
             pipeline.extend([wds.map_dict(audio=resample_audio)])
