@@ -10,6 +10,7 @@ dependencies = [
   "loguru",
   "numpy",
   "jiwer",
+  "requests",
   "scikit-learn>=1.6.0",
   "torch>=2.2.1",
   "torchaudio>=2.2.1",
@@ -17,6 +18,7 @@ dependencies = [
   "pandas>=2.2.3",
   "pytorch-ignite>=0.5.1",
   "soundfile>=0.13.1",
+  "soxr>=0.4.0",
   "transformers>=4.47.1",
   "tqdm",
   "webdataset>=0.2.100",
@@ -33,6 +35,9 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = {file = "LICENSE"}
 
+[project.scripts]
+xares = "xares.run:main_cli"
+
 [project.urls]
 Repository = "https://github.com/jimbozhang/xares.git"
 
@@ -45,7 +50,7 @@ viz = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["src", "tasks"]
+where = ["src"]
 
 [tool.uv.sources]
 audio-embeddings = { path = "../../audio-embeddings", editable = true }

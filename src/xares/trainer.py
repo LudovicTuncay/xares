@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import itertools
 from dataclasses import InitVar, dataclass, field
 from typing import Any, Dict, Iterable, Literal, Tuple
 
 import torch
 import torch.nn as nn
 from ignite.engine import Engine, Events
-from ignite.handlers import CosineAnnealingScheduler, EpochOutputStore, global_step_from_engine
+from ignite.handlers import (
+    CosineAnnealingScheduler,
+    EpochOutputStore,
+    global_step_from_engine,
+)
 from ignite.handlers.tqdm_logger import ProgressBar
 from ignite.metrics import Loss, RunningAverage
 from loguru import logger
@@ -64,7 +69,9 @@ def prepare_frame_task_batch(batch: Tuple, device: torch.device | str = "cpu"):
     # Trim the labels
     y = pad_or_trim(y, x.shape[-1])
     # x, y are (B,D,T), but models need B,T,D
-    return x.transpose(-2, -1).contiguous().to(device), y.transpose(-2, -1).contiguous().to(device)
+    return x.transpose(-2, -1).contiguous().to(device), y.transpose(
+        -2, -1
+    ).contiguous().to(device)
 
 
 def prepare_asr_task_batch(
@@ -83,7 +90,9 @@ def prepare_asr_task_batch(
 class Trainer:
     model: nn.Module
     device: torch.device | Literal["cpu"] = field(
-        default_factory=lambda: torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        default_factory=lambda: (
+            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        )
     )
     optimizer: str = "Adam"
     lr: float = 3e-3
@@ -99,9 +108,13 @@ class Trainer:
     decay_fraction: float = 0.1  # Decay learning rate
     task_type: InitVar[Literal["frame", "clip", "contrastive", "asr"]] = "clip"
 
-    def __post_init__(self, task_type: Literal["frame", "clip", "contrastive", "asr"] = "clip"):
+    def __post_init__(
+        self, task_type: Literal["frame", "clip", "contrastive", "asr"] = "clip"
+    ):
         try:
-            self.optimizer = getattr(optim, self.optimizer)(self.model.parameters(), lr=self.lr)
+            self.optimizer = getattr(optim, self.optimizer)(
+                self.model.parameters(), lr=self.lr
+            )
         except AttributeError:
             raise NotImplementedError(f"Optimizer {self.optimizer} not implemented.")
 
@@ -114,7 +127,9 @@ class Trainer:
         elif task_type == "asr":
             self.prepare_batch_function = prepare_asr_task_batch
         else:
-            raise NotImplementedError(f"Trainer.prepare_batch_function for task_type {task_type} not implemented.")
+            raise NotImplementedError(
+                f"Trainer.prepare_batch_function for task_type {task_type} not implemented."
+            )
 
         self.ignite_trainer = Engine(self.train_step)
         self.ignite_validator = Engine(self.validation_step)
@@ -135,7 +150,9 @@ class Trainer:
         ProgressBar(
             bar_format=None,
         ).attach(self.ignite_trainer, output_transform=lambda x: x)
-        RunningAverage(output_transform=lambda x: x["loss"]).attach(self.ignite_trainer, "loss_avg")
+        RunningAverage(output_transform=lambda x: x["loss"]).attach(
+            self.ignite_trainer, "loss_avg"
+        )
         ProgressBar(bar_format=None).attach(self.ignite_validator)
         ProgressBar(bar_format=None).attach(self.ignite_evaluator)
 
@@ -143,7 +160,9 @@ class Trainer:
     def train_step(self, engine: Engine, batch: Tuple) -> Dict[str, Tensor]:
         self.model.train()
         self.optimizer.zero_grad()
-        loss = self.model(*self.prepare_batch_function(batch, self.device), return_loss=True)
+        loss = self.model(
+            *self.prepare_batch_function(batch, self.device), return_loss=True
+        )
         loss.backward()
         self.optimizer.step()
 
@@ -152,7 +171,9 @@ class Trainer:
     @torch.inference_mode()
     def validation_step(self, engine: Engine, batch: Tuple) -> Tuple[Tensor, Tensor]:
         self.model.eval()
-        y_pred, y = self.model(*self.prepare_batch_function(batch, self.device), return_loss=False)
+        y_pred, y = self.model(
+            *self.prepare_batch_function(batch, self.device), return_loss=False
+        )
         return y_pred, y
 
     @torch.inference_mode()
@@ -160,7 +181,9 @@ class Trainer:
         self.model.eval()
         # For the ASR model
         if hasattr(self.model, "generate"):
-            y_pred, y = self.model.generate(*self.prepare_batch_function(batch, self.device))
+            y_pred, y = self.model.generate(
+                *self.prepare_batch_function(batch, self.device)
+            )
         else:
             y_pred, y = self.model(*self.prepare_batch_function(batch, self.device))
         return y_pred, y
@@ -174,13 +197,30 @@ class Trainer:
         return local_evaluator.state.metrics[self.metric]
 
     def run(self, dl_train, dl_dev):
-        metrics = {"loss": Loss(self.model.criterion), self.metric: self._metric_obj.metric(**self.metric_args)}
+        metrics = {
+            "loss": Loss(self.model.criterion),
+            self.metric: self._metric_obj.metric(**self.metric_args),
+        }
         for name, metric in metrics.items():
             metric.attach(self.ignite_validator, name)
 
         @self.ignite_trainer.on(Events.EPOCH_COMPLETED(every=self.valid_every))
         def log_validation_results(trainer):
-            self.ignite_validator.run(dl_dev)
+            # Pre-check: peek one batch to verify the dataloader isn't empty.
+            # Running ignite on an empty iterator causes NotComputableError from
+            # metrics and leaves stale engine state that breaks subsequent epochs.
+            dev_iter = iter(dl_dev)
+            try:
+                first_batch = next(dev_iter)
+            except StopIteration:
+                logger.warning(
+                    f"Epoch {trainer.state.epoch}: validation DataLoader yielded 0 batches, skipping validation. "
+                    "Encoded tar files may be empty or corrupt — "
+                    "delete the .encoded_ready marker and re-run encoding."
+                )
+                return
+
+            self.ignite_validator.run(itertools.chain([first_batch], dev_iter))
             metrics = self.ignite_validator.state.metrics
             logger.info(
                 f"Epoch: {trainer.state.epoch} {self.metric}: {metrics[self.metric]:.3f}  Avg loss: {metrics['loss']:.5f}"
@@ -195,7 +235,9 @@ class Trainer:
             create_dir=True,
             require_empty=False,
             score_name=self.metric,
-            score_function=Checkpoint.get_default_score_fn(self.metric, self._metric_obj.score),
+            score_function=Checkpoint.get_default_score_fn(
+                self.metric, self._metric_obj.score
+            ),
             global_step_transform=global_step_from_engine(self.ignite_trainer),
         )
         with self.ignite_validator.add_event_handler(
@@ -243,16 +285,18 @@ class KNN(torch.nn.Module):
         topk_sims, neighbors_labels = self.compute_neighbors(test_features)
         b = test_features.shape[0]
         topk_sims_transform = torch.nn.functional.softmax(topk_sims / self.T, 1)
-        scores = torch.nn.functional.one_hot(neighbors_labels, num_classes=self.num_classes) * topk_sims_transform.view(
-            b, -1, 1
-        )
+        scores = torch.nn.functional.one_hot(
+            neighbors_labels, num_classes=self.num_classes
+        ) * topk_sims_transform.view(b, -1, 1)
         return torch.sum(scores[:, : self.nb_knn, :], 1)
 
 
 @dataclass
 class KNNTrainer:
     num_classes: int
-    device: torch.device | Literal["cpu"] = field(default_factory=lambda: torch.device("cpu"))
+    device: torch.device | Literal["cpu"] = field(
+        default_factory=lambda: torch.device("cpu")
+    )
     nb_knn: int = 10
     temperature: float = 0.07
     metric: METRICS_TYPE = "accuracy"
@@ -265,10 +309,21 @@ class KNNTrainer:
 
     def train_and_eval(self, dl_train, dl_eval) -> Tuple[float, int]:
         logger.info("KNN Feature extraction run.")
-        self.trainer.run(dl_train)  # Store all features in memory, should be for most cases okay
+        self.trainer.run(
+            dl_train
+        )  # Store all features in memory, should be for most cases okay
         train_data, train_labels = zip(*self.trainer.state.output)
-        train_data, train_labels = torch.cat(train_data, 0), torch.cat(train_labels, 0).long()
-        knn_model = KNN(train_data, train_labels, nb_knn=self.nb_knn, num_classes=self.num_classes, T=self.temperature)
+        train_data, train_labels = (
+            torch.cat(train_data, 0),
+            torch.cat(train_labels, 0).long(),
+        )
+        knn_model = KNN(
+            train_data,
+            train_labels,
+            nb_knn=self.nb_knn,
+            num_classes=self.num_classes,
+            T=self.temperature,
+        )
 
         def test_step(engine, batch):
             x, y = prepare_clip_task_batch(batch)

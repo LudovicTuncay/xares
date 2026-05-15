@@ -53,38 +53,39 @@ Users provide a single pretrained audioencoder, which outputs frame-level embedd
 
 ## Installation
 
-This project uses `uv` for dependency management. Please ensure you have `uv` installed.
-If not, you can install it following the instructions [here](https://github.com/astral-sh/uv).
+```bash
+# Recommended: using uv
+uv sync --extra examples
 
-To set up the environment, run:
+# Or via pip
+pip install xares[examples]
+```
+
+For development, clone and install in editable mode:
 
 ```bash
 git clone <this-repo>
 cd xares
-uv sync --all-extras
+uv sync --extra examples   # or: pip install -e .[examples]
 ```
 
-## Run with the baseline pretrained audio encoder (Dasheng)
+## Usage
 
-You can run the benchmark with the baseline pretrained audio encoder (Dasheng) with 8 parallel jobs using the following command:
+Run the benchmark with the baseline encoder ([Dasheng](https://github.com/richermans/dasheng)) on all tasks:
 
 ```bash
-uv run -m xares.run --max-jobs 8 example/dasheng/dasheng_encoder.py src/tasks/*.py
+uv run xares --max-jobs 8 example/dasheng/dasheng_encoder.py src/tasks/*.py
 ```
 
-It will download the datasets from [Zenodo](https://zenodo.org/communities/mispeech/records), and then evaluate the encoder on all the tasks.
-If the automatic download fails, you can also manually download the datasets using `tools/download_manually.sh`.
+Or run specific tasks:
 
-Alternatively, you can run tasks from within Python. Here is an example of running the ASVspoof2015 task in a single process:
-
-```python
->>> from example.dasheng.dasheng_encoder import DashengEncoder
->>> from tasks.asvspoof_task import asvspoof2015_config
->>> from xares.task import XaresTask
-
->>> task = XaresTask(config=asvspoof2015_config(encoder=DashengEncoder()))
->>> task.run()
+```bash
+uv run xares example/dasheng/dasheng_encoder.py src/tasks/esc50_task.py src/tasks/gtzan_task.py
 ```
+
+Datasets are downloaded automatically from [Zenodo](https://zenodo.org/communities/mispeech/records). If that fails, use `tools/download_manually.sh`.
+
+`python -m xares.run` also works as an alternative to `uv run xares`.
 
 ## Baseline Results
 
@@ -176,10 +177,10 @@ We provide a check function to verify if the encoder is correctly implemented:
 True
 ```
 
-And then you can run the benchmark with your own encoder:
+Then run the benchmark with your own encoder:
 
 ```bash
-uv run -m xares.run --max-jobs 8 your_encoder.py src/tasks/*.py
+uv run xares --max-jobs 8 your_encoder.py src/tasks/*.py
 ```
 
 ### Notes on Encoder implementation

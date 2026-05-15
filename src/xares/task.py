@@ -19,6 +19,23 @@ from xares.audiowebdataset import (
     create_rawaudio_webdataset,
 )
 from xares.common import XaresSettings
+
+
+def _safe_num_workers(requested: int) -> int:
+    """Return 0 when inside a daemonic process (e.g. mp.Pool child with spawn),
+    because spawning DataLoader workers from a daemon is forbidden and leaks semaphores."""
+    if requested == 0:
+        return 0
+    if mp.current_process().daemon:
+        return 0
+    try:
+        if mp.get_start_method() != "fork":
+            return 0
+    except RuntimeError:
+        pass
+    return requested
+
+
 from xares.metrics import METRICS_TYPE
 from xares.models.asr import AsrModelForGeneration
 from xares.models.retrival import RetrivalMLP
@@ -27,7 +44,6 @@ from xares.trainer import KNNTrainer, Trainer
 from xares.utils import (
     download_hf_model_to_local,
     download_zenodo_record,
-    get_encoder_run_name,
     mkdir_if_not_exists,
 )
 
@@ -153,10 +169,9 @@ class XaresTask:
                 "cuda" if torch.cuda.is_available() else "cpu"
             )
             self.encoder = self.config.encoder.to(self.encoder_device)
-            if self.config.encoder_name:
-                self.encoder_name = self.config.encoder_name
-            else:
-                self.encoder_name = self.encoder.__class__.__name__
+            self.encoder_name = (
+                self.config.encoder_name or self.encoder.__class__.__name__
+            )
         else:
             self.encoder = None
             self.encoder_name = "Unknown"
@@ -248,6 +263,8 @@ class XaresTask:
             for split in self.config.audio_tar_name_of_split
         }
 
+        mkdir_if_not_exists(self.encoded_tar_dir)
+
         for split in audio_tar_path_of_split:
             logger.info(f"Encoding audio for split {split} ...")
             logger.debug(f"Using data from {audio_tar_path_of_split[split]} ... ")
@@ -255,11 +272,7 @@ class XaresTask:
                 [audio_tar_path_of_split[split]],
                 target_sample_rate=self.encoder.sampling_rate,
                 audio_key_name="audio",
-                num_workers=(
-                    0
-                    if (mp.current_process().daemon or mp.get_start_method() != "fork")
-                    else self.config.num_encoder_workers
-                ),
+                num_workers=_safe_num_workers(self.config.num_encoder_workers),
                 batch_size=self.config.batch_size_encode,
                 crop_length=self.config.crop_length,
                 pad_last=True,  # Add crop
@@ -272,6 +285,7 @@ class XaresTask:
                 verbose=False,
             )
 
+            n_written = 0
             with torch.inference_mode():
                 for enum_item, ((audio, _), json_data, filenames) in tqdm(
                     enumerate(dl), desc=f"Encoding {split}", leave=True
@@ -290,8 +304,31 @@ class XaresTask:
                                 "__key__": f"{filename}{enum_item}",
                             }
                         )
+                        n_written += 1
+            sink.close()
+
+            if n_written == 0:
+                logger.error(
+                    f"Encoding produced 0 samples for split '{split}' of task "
+                    f"'{self.config.name}'. Raw audio DataLoader may be empty or "
+                    f"all samples were filtered. NOT marking as ready."
+                )
+                return
 
         self.encoded_ready_path.touch()
+
+    def _clear_encodings(self):
+        """Delete encoded embeddings and the ready marker so re-encoding can run."""
+        import shutil
+
+        if self.encoded_ready_path.exists():
+            self.encoded_ready_path.unlink()
+        if self.encoded_tar_dir.exists():
+            shutil.rmtree(self.encoded_tar_dir)
+        logger.info(
+            f"[{self.config.name}] Cleared encodings at {self.encoded_tar_dir}. "
+            "Will re-encode on next attempt."
+        )
 
     def run_mlp(self) -> Tuple[float, int]:
         mlp_score = 0
@@ -308,6 +345,20 @@ class XaresTask:
             )
             return mlp_score, eval_size
 
+        try:
+            return self._run_mlp_inner(score_file)
+        except FileNotFoundError:
+            if self.encoder is None:
+                raise  # can't re-encode without an encoder
+            logger.warning(
+                f"[{self.config.name}] Encoded tar files missing or corrupt. "
+                "Clearing encodings and re-encoding..."
+            )
+            self._clear_encodings()
+            self.make_encoded_tar()
+            return self._run_mlp_inner(score_file)
+
+    def _run_mlp_inner(self, score_file) -> Tuple[float, int]:
         if self.config.k_fold_splits:
             # K-fold cross validation
             acc = []
@@ -386,11 +437,36 @@ class XaresTask:
             self.trainer.load_state_dict(torch.load(self.ckpt_path))
             return
 
+        from xares.audiowebdataset import expand_with_brace
+
+        train_files = expand_with_brace(train_url)
+        val_files = expand_with_brace(validation_url)
+        if not train_files:
+            logger.error(
+                f"[{self.config.name}] No training tar files matched: {train_url}\n"
+                f"  Try: rm {self.encoded_ready_path}  then re-run encoding."
+            )
+            raise FileNotFoundError(
+                f"No training tar files for {self.config.name}: {train_url}"
+            )
+        if not val_files:
+            logger.error(
+                f"[{self.config.name}] No validation tar files matched: {validation_url}\n"
+                f"  Try: rm {self.encoded_ready_path}  then re-run encoding."
+            )
+            raise FileNotFoundError(
+                f"No validation tar files for {self.config.name}: {validation_url}"
+            )
+        logger.debug(
+            f"[{self.config.name}] Train tars ({len(train_files)}): {train_files}"
+        )
+        logger.debug(f"[{self.config.name}] Val tars ({len(val_files)}): {val_files}")
+
         dl_train = create_embedding_webdataset(
             train_url,
             tar_shuffle=2000,
             batch_size=self.config.batch_size_train,
-            num_workers=self.config.num_training_workers,
+            num_workers=_safe_num_workers(self.config.num_training_workers),
             sort_by_length=self.config.sort_by_length,
             training=True,
             label_processor=self.label_processor,
@@ -399,7 +475,7 @@ class XaresTask:
         dl_val = create_embedding_webdataset(
             validation_url,
             batch_size=self.config.batch_size_valid,
-            num_workers=self.config.num_validation_workers,
+            num_workers=_safe_num_workers(self.config.num_validation_workers),
             sort_by_length=self.config.sort_by_length,
             training=False,
             label_processor=self.label_processor,
@@ -408,13 +484,14 @@ class XaresTask:
 
         try:
             self.trainer.run(dl_train, dl_val)
-        except RuntimeError as e:
-            if "at least one example" in str(e):
-                raise RuntimeError(
-                    f"Empty dataloader. Try delete {self.encoded_ready_path} and re-run."
-                )
-            else:
-                raise e
+        except Exception as e:
+            logger.error(
+                f"[{self.config.name}] Training failed: {e}\n"
+                f"  Train URLs: {train_url}\n"
+                f"  Val URLs:   {validation_url}\n"
+                f"  Try: rm {self.encoded_ready_path}  then re-run encoding."
+            )
+            raise
 
     def evaluate_mlp(
         self, eval_url: list, load_ckpt: bool = False
@@ -431,10 +508,22 @@ class XaresTask:
                     f"No checkpoint found at {self.ckpt_path}. Skip loading."
                 )
 
+        from xares.audiowebdataset import expand_with_brace
+
+        eval_files = expand_with_brace(eval_url)
+        if not eval_files:
+            logger.error(
+                f"[{self.config.name}] No evaluation tar files matched: {eval_url}\n"
+                f"  Try: rm {self.encoded_ready_path}  then re-run encoding."
+            )
+            raise FileNotFoundError(
+                f"No evaluation tar files for {self.config.name}: {eval_url}"
+            )
+
         dl = create_embedding_webdataset(
             eval_url,
             batch_size=self.config.batch_size_valid,
-            num_workers=self.config.num_validation_workers,
+            num_workers=_safe_num_workers(self.config.num_validation_workers),
             label_processor=self.label_processor,
             merge_processor=self.merge_processor,
             training=False,
@@ -460,6 +549,20 @@ class XaresTask:
             )
             return knn_score, eval_size
 
+        try:
+            return self._run_knn_inner(score_file)
+        except FileNotFoundError:
+            if self.encoder is None:
+                raise  # can't re-encode without an encoder
+            logger.warning(
+                f"[{self.config.name}] Encoded tar files missing or corrupt. "
+                "Clearing encodings and re-encoding..."
+            )
+            self._clear_encodings()
+            self.make_encoded_tar()
+            return self._run_knn_inner(score_file)
+
+    def _run_knn_inner(self, score_file) -> Tuple[float, int]:
         if self.config.k_fold_splits:
             # K-fold cross validation
             scores = []
@@ -514,14 +617,14 @@ class XaresTask:
             train_url,
             tar_shuffle=2000,
             batch_size=self.config.batch_size_train,
-            num_workers=self.config.num_training_workers,
+            num_workers=_safe_num_workers(self.config.num_training_workers),
             training=True,
             label_processor=self.label_processor,
         )
         dl_eval = create_embedding_webdataset(
             eval_url,
             batch_size=self.config.batch_size_train,
-            num_workers=self.config.num_validation_workers,
+            num_workers=_safe_num_workers(self.config.num_validation_workers),
             training=False,
             label_processor=self.label_processor,
         )
