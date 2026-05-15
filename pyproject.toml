@@ -11,15 +11,16 @@ dependencies = [
   "numpy",
   "jiwer",
   "scikit-learn>=1.6.0",
-  "torch>=2.2.1,<2.9.0",
-  "torchaudio>=2.2.1,<2.9.0",
+  "torch>=2.2.1",
+  "torchaudio>=2.2.1",
   "torchmetrics>=1.6.1",
   "pandas>=2.2.3",
   "pytorch-ignite>=0.5.1",
-  "soundfile>=0.13.1",  
+  "soundfile>=0.13.1",
   "transformers>=4.47.1",
   "tqdm",
   "webdataset>=0.2.100",
+  "audio-embeddings",
 ]
 authors = [
   {name = "Junbo Zhang", email = "zhangjunbo1@xiaomi.com"},
@@ -29,7 +30,7 @@ authors = [
   {name = "Chenyu Liu", email = "liuchenyu3@xiaomi.com"},
 ]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = {file = "LICENSE"}
 
 [project.urls]
@@ -39,6 +40,12 @@ Repository = "https://github.com/jimbozhang/xares.git"
 examples = [
   "dasheng",
 ]
+viz = [
+  "matplotlib>=3.8",
+]
 
 [tool.setuptools.packages.find]
 where = ["src", "tasks"]
+
+[tool.uv.sources]
+audio-embeddings = { path = "../../audio-embeddings", editable = true }

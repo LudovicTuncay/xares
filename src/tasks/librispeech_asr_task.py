@@ -8,7 +8,7 @@ def librispeech_asr_config(encoder) -> TaskConfig:
         encoder=encoder,
         eval_weight=10000,
         batch_size_train=4,
-        disabled=False,
+        disabled=True,
         sort_by_length=False,  # speedup by smart chunking data
         do_knn=False,
         formal_name="LibriSpeech-100h",
@@ -25,7 +25,11 @@ def librispeech_asr_config(encoder) -> TaskConfig:
     )
 
     if config.use_mini_dataset:
-        logger.warning(f"Dataset {config.name} uses mini version for faster evaluation.")
-        config.audio_tar_name_of_split[config.train_split] = "train-clean-100-000000.tar"
+        logger.warning(
+            f"Dataset {config.name} uses mini version for faster evaluation."
+        )
+        config.audio_tar_name_of_split[config.train_split] = (
+            "train-clean-100-000000.tar"
+        )
 
     return config

@@ -1,5 +1,15 @@
+import warnings
+import sys
+# # Suppress TorchScript deprecation warning from ignite
+# # This is an internal warning in ignite 0.5.x that we cannot fix directly
+# warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*TorchScript.*")
+
 import argparse
 from functools import partial
+
+# # Suppress TorchScript deprecation warning from ignite
+# # This is an internal warning in ignite 0.5.x that we cannot fix directly
+# warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*TorchScript.*")
 
 import pandas as pd
 import torch
@@ -10,7 +20,7 @@ from xares.audio_encoder_checker import check_audio_encoder
 from xares.common import setup_global_logger
 from xares.metrics import weighted_average
 from xares.task import XaresTask
-from xares.utils import attr_from_py_path
+from xares.utils import attr_from_py_path, get_encoder_run_name
 
 
 def worker(
@@ -26,6 +36,22 @@ def worker(
 
     # Task setup
     config = attr_from_py_path(task_py, endswith="_config")(encoder)
+    
+    # NEW: Determine run name and inject into config
+    # We calculate the run name here so we can use it to distinguish checkpoints
+    run_name = get_encoder_run_name(encoder=encoder, encoder_py_path=encoder_py)
+    # If run_name is available (and not "unknown_checkpoint" or class name fallback), use it
+    # get_encoder_run_name returns class name as fallback if no checkpoint path
+    # But user wants to use run name (e.g. "2025-12-19_14-52-27")
+    
+    # We trust get_encoder_run_name to return something reasonable.
+    # If it is "unknown_checkpoint", maybe we shouldn't use it if we want to default to class name?
+    # But current behavior is using class name. If get_encoder_run_name returns class name, it's same.
+    # If it returns "unknown_checkpoint", that's also distinctive.
+    
+    if run_name:
+         config.encoder_name = run_name
+
     if config.disabled:
         logger.warning(f"Task {config.name} is disabled, skipping")
         return config.formal_name, (0, 0), (0, 0), True
@@ -63,7 +89,8 @@ def worker(
 
 
 def stage_1(encoder_py, task_py, gpu_id):
-    torch.cuda.set_device(gpu_id)
+    if gpu_id >= 0 and torch.cuda.is_available():
+        torch.cuda.set_device(gpu_id)
     return worker(encoder_py, task_py, do_encode=True)
 
 
@@ -120,18 +147,23 @@ def main(args):
     encoder = attr_from_py_path(args.encoder_py, endswith="Encoder")()
     if not check_audio_encoder(encoder):
         raise ValueError("Invalid encoder")
+    encoder_checkpoint_path = getattr(encoder, "checkpoint_path", None)
     del encoder
 
+    ckpt_name = get_encoder_run_name(encoder_checkpoint_path=encoder_checkpoint_path, encoder_py_path=args.encoder_py)
+    
     # Stage 1: Execute make_encoded_tar
     if args.from_stage <= 1:
         try:
             if enable_multiprocessing:
                 num_gpus = torch.cuda.device_count()
+                tasks_args = []
+                for i, task_py in enumerate(args.tasks_py):
+                    gpu_id = (i % num_gpus) if num_gpus > 0 else -1
+                    tasks_args.append((args.encoder_py, task_py, gpu_id))
+                
                 with mp.Pool(processes=args.max_jobs) as pool:
-                    pool.starmap(
-                        stage_1,
-                        [(args.encoder_py, task_py, i % num_gpus) for i, task_py in enumerate(args.tasks_py)],
-                    )
+                    pool.starmap(stage_1, tasks_args)
             else:
                 for task_py in args.tasks_py:
                     worker(args.encoder_py, task_py, do_encode=True)
@@ -187,6 +219,38 @@ def main(args):
 
             print("\nWeighted Average MLP Score for Public Datasets:", avg_mlp_public)
             print("Weighted Average KNN Score for Public Datasets:", avg_knn_public)
+
+        # Save results to CSV
+        try:
+            from pathlib import Path
+            import os
+            
+            # Extract checkpoint name
+            
+            # Create results directory
+            results_dir = Path("csv_results")
+            results_dir.mkdir(exist_ok=True)
+            
+            mlp_dir = results_dir / "mlp"
+            mlp_dir.mkdir(exist_ok=True)
+            
+            knn_dir = results_dir / "knn"
+            knn_dir.mkdir(exist_ok=True)
+            
+            # Save MLP results
+            df_mlp = df[["Task", "MLP_Score", "Private"]].copy()
+            mlp_csv_path = mlp_dir / f"{ckpt_name}_MLP.csv"
+            df_mlp.to_csv(mlp_csv_path, index=False)
+            logger.info(f"Saved MLP results to {mlp_csv_path}")
+            
+            # Save KNN results
+            df_knn = df[["Task", "KNN_Score", "Private"]].copy()
+            knn_csv_path = knn_dir / f"{ckpt_name}_KNN.csv"
+            df_knn.to_csv(knn_csv_path, index=False)
+            logger.info(f"Saved KNN results to {knn_csv_path}")
+            
+        except Exception as e:
+            logger.error(f"Failed to save results to CSV: {e}")
 
 
 if __name__ == "__main__":

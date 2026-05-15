@@ -53,18 +53,15 @@ Users provide a single pretrained audioencoder, which outputs frame-level embedd
 
 ## Installation
 
-X-ARES is available on [PyPI](https://pypi.org/project/xares/). You can install it via pip.
+This project uses `uv` for dependency management. Please ensure you have `uv` installed.
+If not, you can install it following the instructions [here](https://github.com/astral-sh/uv).
 
-```bash
-pip install xares
-```
-
-For development, you can clone the repository and install the package in editable mode.
+To set up the environment, run:
 
 ```bash
 git clone <this-repo>
 cd xares
-pip install -e .[examples]
+uv sync --all-extras
 ```
 
 ## Run with the baseline pretrained audio encoder (Dasheng)
@@ -72,7 +69,7 @@ pip install -e .[examples]
 You can run the benchmark with the baseline pretrained audio encoder (Dasheng) with 8 parallel jobs using the following command:
 
 ```bash
-python -m xares.run --max-jobs 8 example/dasheng/dasheng_encoder.py src/tasks/*.py
+uv run -m xares.run --max-jobs 8 example/dasheng/dasheng_encoder.py src/tasks/*.py
 ```
 
 It will download the datasets from [Zenodo](https://zenodo.org/communities/mispeech/records), and then evaluate the encoder on all the tasks.
@@ -182,7 +179,7 @@ True
 And then you can run the benchmark with your own encoder:
 
 ```bash
-python -m xares.run --max-jobs 8 your_encoder.py src/tasks/*.py
+uv run -m xares.run --max-jobs 8 your_encoder.py src/tasks/*.py
 ```
 
 ### Notes on Encoder implementation

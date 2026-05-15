@@ -178,3 +178,7 @@ pretrained/
 
 # Output
 checkpoints/
+jepa_checkpoints/
+figures/
+csv_results/
+*.tar.xz

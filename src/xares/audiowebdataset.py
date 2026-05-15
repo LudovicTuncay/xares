@@ -1,4 +1,5 @@
 import json
+import io
 import warnings
 from functools import partial
 from pathlib import Path
@@ -17,6 +18,42 @@ def fast_warn_and_continue(exn):
 
     warnings.warn(repr(exn))
     return True
+
+
+def custom_audio_decoder(key, value):
+    if not key.endswith((".flac", ".mp3", ".sox", ".wav", ".m4a", ".ogg", ".wma")):
+        return None
+    try:
+        import soundfile
+        with io.BytesIO(value) as b:
+            wav_np, sr = soundfile.read(b)
+        
+        wav = torch.from_numpy(wav_np)
+        
+        # soundfile returns (T, C) or (T,)
+        # torchaudio expects (C, T)
+        if wav.ndim == 1:
+            wav = wav.unsqueeze(0)
+        else:
+            wav = wav.t()
+            
+        if wav.dtype == torch.float64:
+            wav = wav.float()
+            
+        return wav, sr
+    except Exception as e:
+        logger.warning(f"Audio decode error for {key}: {e}")
+        raise e
+
+
+def custom_json_decoder(key, value):
+    if not key.endswith(".json"):
+        return None
+    try:
+        return json.loads(value)
+    except Exception as e:
+        logger.warning(f"JSON decode error for {key}: {e}")
+        raise e
 
 
 def crop_or_pad_audio(wav: torch.Tensor, crop_size: int, pad_last: bool = False):
@@ -98,7 +135,9 @@ class Audiowebdataset(wds.DataPipeline):
             pipeline.extend([wds.split_by_node, wds.split_by_worker, wds.tarfile_to_samples(handler=handler)])
 
         # Decode i.e., bytes object to a python-accessible obj.
-        pipeline.extend([wds.decode(wds.torch_audio, handler=handler), wds.rename(**rename_keys, handler=handler)])
+        # Use custom decoders to better handle/log errors and ensure JSON is decoded
+        decoders = [custom_audio_decoder, custom_json_decoder]
+        pipeline.extend([wds.decode(*decoders, handler=handler), wds.rename(**rename_keys, handler=handler)])
 
         if map_kwargs:
             pipeline.extend([wds.map_dict(**map_kwargs)])

@@ -7,7 +7,7 @@ from loguru import logger
 
 def setup_global_logger():
     logging.captureWarnings(True)
-    logging.getLogger("py.warnings").setLevel(logging.ERROR)
+    logging.getLogger("py.warnings").setLevel(logging.INFO)
 
     # Make the logger with this format the default for all loggers in this package
     logger.configure(
@@ -16,7 +16,7 @@ def setup_global_logger():
                 "sink": sys.stdout,
                 "format": "<fg #FF6900>(X-ARES)</fg #FF6900> [<yellow>{time:YYYY-MM-DD HH:mm:ss}</yellow>] "
                 "<level>{message}</level>",
-                "level": "DEBUG",
+                "level": "INFO",
                 "colorize": True,
             }
         ]

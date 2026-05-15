@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List
+from typing import Any, List
 
 from loguru import logger
 from tqdm import tqdm
@@ -63,6 +63,7 @@ def untar_file(tar_file, dest_dir):
 def download_zenodo_record(zenodo_id: str, target_dir: str, force_download: bool = False, temp_dir: None | str = None):
     import shutil
     import tempfile
+    import os
 
     target_zip_path = Path(target_dir) / f"{zenodo_id}.zip"
     if not force_download and target_zip_path.exists():
@@ -79,6 +80,10 @@ def download_zenodo_record(zenodo_id: str, target_dir: str, force_download: bool
         if not unzipped_flag.exists():
             unzip_file(target_zip_path, target_dir)
             unzipped_flag.touch()
+            # Remove zip file to save space
+            if target_zip_path.exists():
+                logger.info(f"Removing {target_zip_path} to save space.")
+                os.remove(target_zip_path)
         else:
             logger.info(f"{target_zip_path} already unzipped, skipping unzip.")
     except Exception as e:
@@ -134,3 +139,61 @@ def download_hf_model_to_local(model_names: str | List[str], output_root: str = 
 
     if len(model_names) > 0:
         logger.warning(f"Models {model_names} are not supported for download")
+
+
+def get_encoder_run_name(
+    encoder: Any | None = None, 
+    encoder_py_path: str | Path | None = None, 
+    encoder_checkpoint_path: str | Path | None = None
+) -> str:
+    from pathlib import Path
+    import os
+    from loguru import logger
+    
+    ckpt_name = None
+    
+    if encoder_checkpoint_path is None and encoder is not None:
+        encoder_checkpoint_path = getattr(encoder, "checkpoint_path", None)
+
+    if encoder_checkpoint_path:
+        try:
+            ckpt_path = Path(encoder_checkpoint_path).resolve()
+            potential_config_dirs = [ckpt_path.parent, ckpt_path.parent.parent]
+            
+            for config_dir in potential_config_dirs:
+                hydra_config_path = config_dir / ".hydra" / "config.yaml"
+                if hydra_config_path.exists():
+                    try:
+                        from omegaconf import OmegaConf
+                        conf = OmegaConf.load(hydra_config_path)
+                        if conf and "logger" in conf and "wandb" in conf.logger and "name" in conf.logger.wandb:
+                            run_name = conf.logger.wandb.name
+                            if run_name:
+                                ckpt_name = run_name
+                                logger.info(f"Using wandb run name '{ckpt_name}' from {hydra_config_path}")
+                                break
+                    except ImportError:
+                        logger.warning("omegaconf not installed, skipping hydra config check")
+                        break
+                    except Exception as e:
+                        logger.warning(f"Failed to read wandb name from {hydra_config_path}: {e}")
+        except Exception as e:
+            logger.debug(f"Error checking for hydra config: {e}")
+
+        if not ckpt_name:
+            ckpt_name = Path(encoder_checkpoint_path).stem
+    else:
+        ckpt_path_env = os.environ.get("AUDIO_JEPA_CHECKPOINT")
+        if ckpt_path_env:
+            ckpt_name = Path(ckpt_path_env).stem
+    
+    if not ckpt_name:
+         if encoder_py_path:
+             ckpt_name = Path(encoder_py_path).stem
+         elif encoder:
+             ckpt_name = encoder.__class__.__name__
+    
+    if not ckpt_name:
+         ckpt_name = "unknown_checkpoint"
+         
+    return ckpt_name
